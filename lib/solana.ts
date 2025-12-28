@@ -719,7 +719,7 @@ export async function getMintTransactions(limit: number = 50, existingSignatures
               console.log(`[getMintTransactions] Rate limited (429), waiting 10 seconds before retry...`);
               await delay(10000); // Délai de 10 secondes pour les erreurs 429
               // Réduire la vitesse après une erreur 429
-              await delay(MIN_REQUEST_DELAY * 2); // Double délai après 429
+              await delay(MIN_REQUEST_DELAY * 3); // Triple délai après 429
               continue;
             }
             if (error?.message?.includes('503') || error?.message?.includes('Service Unavailable')) {
