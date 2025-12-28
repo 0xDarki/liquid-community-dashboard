@@ -207,18 +207,27 @@ export default function Dashboard() {
                 subtitle="Since the beginning"
               />
               {(() => {
-                // Calculer le prix depuis les balances si le prix n'est pas disponible
-                const price = stats.tokenPrice ?? (stats.tokenBalance > 0 && stats.solBalance > 0 ? stats.solBalance / stats.tokenBalance : null);
+                // Afficher le prix depuis Jupiter API ou calculer depuis les balances
+                const priceInSol = stats.tokenPrice ?? (stats.tokenBalance > 0 && stats.solBalance > 0 ? stats.solBalance / stats.tokenBalance : null);
+                const priceInUsd = stats.tokenPriceInUsd;
+                const solPrice = stats.solPrice;
                 const priceSol = stats.tokenPriceSol ?? stats.solBalance;
                 const priceToken = stats.tokenPriceToken ?? stats.tokenBalance;
                 
-                return price != null && price > 0 ? (
-                  <StatsCard
-                    title="Token Price"
-                    value={`${price.toFixed(8)} SOL`}
-                    subtitle={`${priceSol.toFixed(4)} SOL / ${priceToken.toLocaleString('en-US', { maximumFractionDigits: 2 })} tokens`}
-                  />
-                ) : null;
+                if (priceInSol != null && priceInSol > 0) {
+                  return (
+                    <StatsCard
+                      title="Token Price"
+                      value={priceInUsd != null && priceInUsd > 0 
+                        ? `$${priceInUsd.toFixed(8)}`
+                        : `${priceInSol.toFixed(8)} SOL`}
+                      subtitle={priceInUsd != null && priceInUsd > 0
+                        ? `${priceInSol.toFixed(8)} SOL ($${solPrice?.toFixed(2) || 'N/A'} SOL)`
+                        : `${priceSol.toFixed(4)} SOL / ${priceToken.toLocaleString('en-US', { maximumFractionDigits: 2 })} tokens`}
+                    />
+                  );
+                }
+                return null;
               })()}
             </div>
           </div>

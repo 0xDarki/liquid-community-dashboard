@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getPoolStats, getTokenPrice, type TransferTransaction } from '@/lib/solana';
-import { getAllStoredMints, getStoredMints } from '@/lib/storage';
+import { getAllStoredMints, getStoredMints, loadStoredPrice } from '@/lib/storage';
 import { cache } from '@/lib/cache';
 
 export const dynamic = 'force-dynamic'; // Force dynamic rendering
@@ -12,13 +12,39 @@ export async function GET() {
     const cacheKey = 'pool-stats';
     const cached = cache.get(cacheKey) as any;
     
-    // Récupérer le prix du token depuis la LP (toujours en temps réel, pas de cache)
-    const tokenPrice = await getTokenPrice();
+    // Récupérer le prix du token (depuis le stockage ou en temps réel)
+    let tokenPrice = await loadStoredPrice();
+    
+    // Si le prix n'est pas disponible ou est trop ancien (> 5 minutes), le rafraîchir
+    const fiveMinutes = 5 * 60 * 1000;
+    if (!tokenPrice || (Date.now() - tokenPrice.timestamp) > fiveMinutes) {
+      console.log('[Stats API] Price not found or too old, fetching fresh price...');
+      const { getTokenPrice } = await import('@/lib/solana');
+      const freshPrice = await getTokenPrice();
+      if (freshPrice) {
+        const { saveStoredPrice } = await import('@/lib/storage');
+        tokenPrice = {
+          price: freshPrice.price,
+          priceInUsd: freshPrice.priceInUsd,
+          solPrice: freshPrice.solPrice,
+          solBalance: freshPrice.solBalance,
+          tokenBalance: freshPrice.tokenBalance,
+          timestamp: Date.now(),
+        };
+        await saveStoredPrice(tokenPrice);
+        console.log('[Stats API] Fresh price saved');
+      }
+    } else {
+      console.log('[Stats API] Using stored price');
+    }
+    
     console.log('[Stats API] Token price result:', tokenPrice);
     
     // Si on a un cache valide, l'utiliser mais toujours mettre à jour le prix
     if (cached) {
       cached.tokenPrice = tokenPrice?.price ?? null;
+      cached.tokenPriceInUsd = tokenPrice?.priceInUsd ?? null;
+      cached.solPrice = tokenPrice?.solPrice ?? null;
       cached.tokenPriceSol = tokenPrice?.solBalance ?? null;
       cached.tokenPriceToken = tokenPrice?.tokenBalance ?? null;
       cache.set(cacheKey, cached, 120000);
@@ -60,6 +86,8 @@ export async function GET() {
       totalTokensAdded,
       totalTokensTransferred,
       tokenPrice: tokenPrice?.price ?? null,
+      tokenPriceInUsd: tokenPrice?.priceInUsd ?? null,
+      solPrice: tokenPrice?.solPrice ?? null,
       tokenPriceSol: tokenPrice?.solBalance ?? null,
       tokenPriceToken: tokenPrice?.tokenBalance ?? null,
     };

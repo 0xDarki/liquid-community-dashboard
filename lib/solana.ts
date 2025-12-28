@@ -57,6 +57,8 @@ export interface PoolStats {
   totalTokensAdded: number;
   totalTokensTransferred: number;
   tokenPrice?: number | null;
+  tokenPriceInUsd?: number | null;
+  solPrice?: number | null;
   tokenPriceSol?: number | null;
   tokenPriceToken?: number | null;
 }
@@ -92,33 +94,70 @@ export async function getTokenBalance(address: string, mintAddress: string): Pro
 
       if (tokenAccounts.value.length > 0) {
         const balance = tokenAccounts.value[0].account.data.parsed.info.tokenAmount.uiAmount;
-        return balance || 0;
+        if (balance && balance > 0) {
+          console.log(`[getTokenBalance] Found balance via getParsedTokenAccountsByOwner: ${balance}`);
+          return balance;
+        }
       }
     } catch (err) {
-      // Si ça échoue, essayer une autre méthode
+      console.log('[getTokenBalance] getParsedTokenAccountsByOwner failed:', err);
     }
     
     // Alternative: chercher dans les transactions récentes pour trouver le solde
     // Pour la LP, on peut aussi chercher dans les postTokenBalances des transactions récentes
     try {
-      const signatures = await connection.getSignaturesForAddress(publicKey, { limit: 1 });
-      if (signatures.length > 0) {
-        const tx = await connection.getParsedTransaction(signatures[0].signature, {
-          maxSupportedTransactionVersion: 0,
-        });
-        if (tx?.meta?.postTokenBalances) {
-          const balance = tx.meta.postTokenBalances.find(
-            (b: any) => b.owner === address && b.mint === mintAddress
-          );
-          if (balance) {
-            return balance.uiTokenAmount?.uiAmount || 0;
+      const signatures = await connection.getSignaturesForAddress(publicKey, { limit: 10 });
+      console.log(`[getTokenBalance] Checking ${signatures.length} recent transactions for token balance...`);
+      
+      // Chercher dans les transactions récentes (jusqu'à 10)
+      for (const sigInfo of signatures) {
+        try {
+          const tx = await connection.getParsedTransaction(sigInfo.signature, {
+            maxSupportedTransactionVersion: 0,
+          });
+          
+          if (tx?.meta?.postTokenBalances) {
+            // Chercher tous les balances de tokens pour cette adresse et ce mint
+            let totalBalance = 0;
+            for (const balance of tx.meta.postTokenBalances) {
+              if (balance.owner === address && balance.mint === mintAddress) {
+                const amount = balance.uiTokenAmount?.uiAmount || 0;
+                totalBalance += amount;
+              }
+            }
+            if (totalBalance > 0) {
+              console.log(`[getTokenBalance] Found balance ${totalBalance} in transaction ${sigInfo.signature.substring(0, 20)}...`);
+              return totalBalance;
+            }
+          }
+        } catch (txErr) {
+          // Continuer avec la transaction suivante
+          continue;
+        }
+      }
+    } catch (err) {
+      console.log('[getTokenBalance] Transaction search failed:', err);
+    }
+    
+    // Dernière tentative: chercher tous les comptes tokens sans filtre mint
+    try {
+      const allTokenAccounts = await connection.getParsedTokenAccountsByOwner(publicKey, {});
+      console.log(`[getTokenBalance] Found ${allTokenAccounts.value.length} total token accounts`);
+      
+      for (const account of allTokenAccounts.value) {
+        if (account.account.data.parsed.info.mint === mintAddress) {
+          const balance = account.account.data.parsed.info.tokenAmount.uiAmount;
+          if (balance && balance > 0) {
+            console.log(`[getTokenBalance] Found balance via all accounts search: ${balance}`);
+            return balance;
           }
         }
       }
     } catch (err) {
-      // Ignorer les erreurs
+      console.log('[getTokenBalance] All accounts search failed:', err);
     }
     
+    console.log(`[getTokenBalance] Could not find token balance for ${address}`);
     return 0;
   } catch (error) {
     console.error('Error fetching token balance:', error);
@@ -1128,8 +1167,8 @@ export async function getPoolStats(): Promise<PoolStats> {
   }
 }
 
-// Fonction pour récupérer le prix du token depuis la LP
-export async function getTokenPrice(): Promise<{ price: number; solBalance: number; tokenBalance: number } | null> {
+// Fonction pour récupérer le prix du token depuis Jupiter API
+export async function getTokenPrice(): Promise<{ price: number; priceInUsd: number; solPrice: number; solBalance: number; tokenBalance: number } | null> {
   try {
     const publicKey = new PublicKey(LP_POOL_ADDRESS);
     
@@ -1138,39 +1177,111 @@ export async function getTokenPrice(): Promise<{ price: number; solBalance: numb
     const solBalanceInSol = solBalance / 1e9; // Convertir lamports en SOL
     
     // Récupérer le solde de tokens de la LP
-    const tokenMintPublicKey = new PublicKey(TOKEN_MINT_ADDRESS);
-    
-    // Trouver le compte token associé à la LP
-    const tokenAccounts = await connection.getParsedTokenAccountsByOwner(publicKey, {
-      mint: tokenMintPublicKey,
-    });
-    
     let tokenBalance = 0;
-    if (tokenAccounts.value.length > 0) {
-      // Prendre le premier compte token (normalement il n'y en a qu'un)
-      const tokenAccount = tokenAccounts.value[0];
-      tokenBalance = tokenAccount.account.data.parsed.info.tokenAmount.uiAmount || 0;
-    } else {
-      // Si aucun compte token trouvé, essayer avec getTokenBalance
-      console.log('[getTokenPrice] No token account found, trying getTokenBalance...');
+    try {
       tokenBalance = await getTokenBalance(LP_POOL_ADDRESS, TOKEN_MINT_ADDRESS);
+      console.log(`[getTokenPrice] Token balance from getTokenBalance: ${tokenBalance}`);
+    } catch (error) {
+      console.error('[getTokenPrice] Error getting token balance:', error);
     }
     
-    console.log(`[getTokenPrice] SOL balance: ${solBalanceInSol}, Token balance: ${tokenBalance}`);
+    // Si tokenBalance est 0, essayer de le récupérer depuis les transactions récentes
+    if (tokenBalance === 0) {
+      console.log('[getTokenPrice] Token balance is 0, trying to find it in recent transactions...');
+      try {
+        const signatures = await connection.getSignaturesForAddress(publicKey, { limit: 5 });
+        for (const sigInfo of signatures) {
+          try {
+            const tx = await connection.getParsedTransaction(sigInfo.signature, {
+              maxSupportedTransactionVersion: 0,
+            });
+            if (tx?.meta?.postTokenBalances) {
+              let totalBalance = 0;
+              for (const balance of tx.meta.postTokenBalances) {
+                if (balance.owner === LP_POOL_ADDRESS && balance.mint === TOKEN_MINT_ADDRESS) {
+                  totalBalance += balance.uiTokenAmount?.uiAmount || 0;
+                }
+              }
+              if (totalBalance > 0) {
+                tokenBalance = totalBalance;
+                console.log(`[getTokenPrice] Found token balance ${tokenBalance} in recent transaction`);
+                break;
+              }
+            }
+          } catch (err) {
+            continue;
+          }
+        }
+      } catch (err) {
+        console.error('[getTokenPrice] Error searching transactions for balance:', err);
+      }
+    }
     
-    // Calculer le prix : SOL / Tokens
+    // Récupérer les prix depuis Jupiter API
+    const SOL_MINT = 'So11111111111111111111111111111111111111112';
+    const priceResponse = await fetch(
+      `https://api.jup.ag/price/v3?ids=${SOL_MINT},${TOKEN_MINT_ADDRESS}`
+    );
+    
+    if (!priceResponse.ok) {
+      console.error('[getTokenPrice] Jupiter API error:', priceResponse.statusText);
+      // Fallback: calculer le prix depuis la LP si on a les balances
+      if (tokenBalance > 0 && solBalanceInSol > 0) {
+        const price = solBalanceInSol / tokenBalance;
+        return {
+          price,
+          priceInUsd: 0,
+          solPrice: 0,
+          solBalance: solBalanceInSol,
+          tokenBalance,
+        };
+      }
+      return null;
+    }
+    
+    const priceData = await priceResponse.json();
+    console.log('[getTokenPrice] Jupiter price data:', JSON.stringify(priceData, null, 2));
+    
+    const solPriceData = priceData.data?.[SOL_MINT];
+    const tokenPriceData = priceData.data?.[TOKEN_MINT_ADDRESS];
+    
+    if (!solPriceData || !tokenPriceData) {
+      console.error('[getTokenPrice] Missing price data from Jupiter');
+      // Fallback: calculer le prix depuis la LP
+      if (tokenBalance > 0 && solBalanceInSol > 0) {
+        const price = solBalanceInSol / tokenBalance;
+        return {
+          price,
+          priceInUsd: 0,
+          solPrice: solPriceData?.price || 0,
+          solBalance: solBalanceInSol,
+          tokenBalance,
+        };
+      }
+      return null;
+    }
+    
+    const solPrice = solPriceData.price || 0;
+    const tokenPriceInUsd = tokenPriceData.price || 0;
+    
+    // Calculer le prix en SOL si on a les balances de la LP
+    let priceInSol = 0;
     if (tokenBalance > 0 && solBalanceInSol > 0) {
-      const price = solBalanceInSol / tokenBalance;
-      console.log(`[getTokenPrice] Calculated price: ${price} SOL per token`);
-      return {
-        price,
-        solBalance: solBalanceInSol,
-        tokenBalance,
-      };
+      priceInSol = solBalanceInSol / tokenBalance;
+    } else if (solPrice > 0 && tokenPriceInUsd > 0) {
+      // Calculer depuis les prix USD
+      priceInSol = tokenPriceInUsd / solPrice;
     }
     
-    console.log('[getTokenPrice] Cannot calculate price: tokenBalance or solBalance is 0');
-    return null;
+    console.log(`[getTokenPrice] SOL price: $${solPrice}, Token price: $${tokenPriceInUsd}, Price in SOL: ${priceInSol}`);
+    
+    return {
+      price: priceInSol,
+      priceInUsd: tokenPriceInUsd,
+      solPrice,
+      solBalance: solBalanceInSol,
+      tokenBalance,
+    };
   } catch (error) {
     console.error('Error getting token price:', error);
     return null;

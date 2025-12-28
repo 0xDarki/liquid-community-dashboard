@@ -10,11 +10,22 @@ const SYNC_STATE_FILE = path.join(STORAGE_DIR, 'sync-state.json');
 // Blob storage keys
 const BLOB_MINTS_KEY = 'mints.json';
 const BLOB_SYNC_STATE_KEY = 'sync-state.json';
+const BLOB_PRICE_KEY = 'price.json';
 
 // Interface pour l'état de synchronisation
 interface SyncState {
   lastSync: number; // Timestamp de la dernière synchronisation
   isSyncing: boolean; // Indique si une synchronisation est en cours
+}
+
+// Interface pour le prix du token
+export interface TokenPrice {
+  price: number; // Prix en SOL
+  priceInUsd: number; // Prix en USD
+  solPrice: number; // Prix du SOL en USD
+  solBalance: number; // Solde SOL de la LP
+  tokenBalance: number; // Solde de tokens de la LP
+  timestamp: number; // Timestamp de la dernière mise à jour
 }
 
 // Détecter si on est sur Vercel (utilise Blob Storage) ou en local (utilise filesystem)
@@ -138,6 +149,48 @@ async function saveSyncStateToBlob(state: SyncState): Promise<void> {
   }
 }
 
+// Charger le prix depuis Vercel Blob
+async function loadPriceFromBlob(): Promise<TokenPrice | null> {
+  try {
+    const blobInfo = await head(BLOB_PRICE_KEY).catch(() => null);
+    if (!blobInfo) {
+      return null;
+    }
+    
+    const response = await fetch(blobInfo.url);
+    if (!response.ok) {
+      if (response.status === 404) {
+        return null;
+      }
+      throw new Error(`Failed to fetch price: ${response.statusText}`);
+    }
+    
+    const text = await response.text();
+    return JSON.parse(text);
+  } catch (error: any) {
+    if (error.name === 'BlobNotFoundError' || error.status === 404) {
+      return null;
+    }
+    console.error('Error loading price from blob:', error);
+    return null;
+  }
+}
+
+// Sauvegarder le prix dans Vercel Blob
+async function savePriceToBlob(price: TokenPrice): Promise<void> {
+  try {
+    const content = JSON.stringify(price, null, 2);
+    await put(BLOB_PRICE_KEY, content, {
+      access: 'public',
+      contentType: 'application/json',
+      addRandomSuffix: false,
+      allowOverwrite: true,
+    });
+  } catch (error) {
+    console.error('Error saving price to blob:', error);
+  }
+}
+
 // ========== FONCTIONS FILESYSTEM (Local) ==========
 
 // Charger les mints depuis le fichier local
@@ -193,6 +246,33 @@ async function saveSyncStateToFile(state: SyncState): Promise<void> {
   }
 }
 
+// Charger le prix depuis le fichier local
+async function loadPriceFromFile(): Promise<TokenPrice | null> {
+  try {
+    await ensureDataDir();
+    const PRICE_FILE = path.join(STORAGE_DIR, 'price.json');
+    const data = await fs.readFile(PRICE_FILE, 'utf-8');
+    return JSON.parse(data);
+  } catch (error: any) {
+    if (error.code === 'ENOENT') {
+      return null;
+    }
+    console.error('Error loading price:', error);
+    return null;
+  }
+}
+
+// Sauvegarder le prix dans le fichier local
+async function savePriceToFile(price: TokenPrice): Promise<void> {
+  try {
+    await ensureDataDir();
+    const PRICE_FILE = path.join(STORAGE_DIR, 'price.json');
+    await fs.writeFile(PRICE_FILE, JSON.stringify(price, null, 2), 'utf-8');
+  } catch (error) {
+    console.error('Error saving price:', error);
+  }
+}
+
 // ========== FONCTIONS UNIFIÉES (utilisent Blob ou File selon l'environnement) ==========
 
 // Charger les mints depuis le stockage (Blob ou File)
@@ -226,6 +306,23 @@ async function saveSyncState(state: SyncState): Promise<void> {
     await saveSyncStateToBlob(state);
   } else {
     await saveSyncStateToFile(state);
+  }
+}
+
+// Charger le prix (unifié Blob/File)
+export async function loadStoredPrice(): Promise<TokenPrice | null> {
+  if (useBlobStorage()) {
+    return loadPriceFromBlob();
+  }
+  return loadPriceFromFile();
+}
+
+// Sauvegarder le prix (unifié Blob/File)
+export async function saveStoredPrice(price: TokenPrice): Promise<void> {
+  if (useBlobStorage()) {
+    await savePriceToBlob(price);
+  } else {
+    await savePriceToFile(price);
   }
 }
 
@@ -479,6 +576,28 @@ export async function syncMints(limit: number = 50, getAll: boolean = false): Pr
       console.log(`[syncMints] Saving ${updated.length} total transactions...`);
       await saveStoredMints(updated);
       console.log(`[syncMints] Successfully saved ${updated.length} transactions`);
+      
+      // Rafraîchir le prix après la synchronisation
+      try {
+        const { getTokenPrice } = await import('./solana');
+        const priceData = await getTokenPrice();
+        if (priceData) {
+          const price: TokenPrice = {
+            price: priceData.price,
+            priceInUsd: priceData.priceInUsd,
+            solPrice: priceData.solPrice,
+            solBalance: priceData.solBalance,
+            tokenBalance: priceData.tokenBalance,
+            timestamp: Date.now(),
+          };
+          await saveStoredPrice(price);
+          console.log(`[syncMints] Price updated: ${price.priceInUsd ? '$' + price.priceInUsd.toFixed(8) : price.price.toFixed(8) + ' SOL'}`);
+        }
+      } catch (priceError) {
+        console.error('[syncMints] Error updating price:', priceError);
+        // Ne pas faire échouer la sync si le prix ne peut pas être mis à jour
+      }
+      
       return { added: toAdd.length, total: updated.length };
     }
     
