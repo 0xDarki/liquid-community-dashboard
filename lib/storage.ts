@@ -316,10 +316,16 @@ export async function detectAndRemoveFailedTransactions(): Promise<{
           
           checked++;
           
-          // Si la transaction a échoué (err !== null) ou n'existe pas
-          if (status?.value?.err || !status?.value) {
+          // Ne supprimer QUE si la transaction a explicitement échoué (err existe et n'est pas null)
+          // Ne pas supprimer si status.value est null/undefined (peut être normal pour certaines transactions anciennes)
+          // Une transaction réussie a status.value.confirmationStatus défini et err === null
+          // Une transaction échouée a status.value.err défini et non-null
+          if (status?.value && status.value.err !== null && status.value.err !== undefined) {
             failedSignatures.push(mint.signature);
-            console.log(`[detectAndRemoveFailedTransactions] Found failed transaction: ${mint.signature}`);
+            console.log(`[detectAndRemoveFailedTransactions] Found failed transaction: ${mint.signature}, err: ${JSON.stringify(status.value.err)}`);
+          } else {
+            // Transaction valide (err === null) ou status non disponible (on garde par sécurité)
+            // Ne pas supprimer les transactions valides ou celles dont le status n'est pas disponible
           }
           
           // Gérer les erreurs 429 avec un délai plus long

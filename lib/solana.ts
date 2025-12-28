@@ -672,9 +672,12 @@ export async function getMintTransactions(limit: number = 50, existingSignatures
             // Vérifier d'abord le statut de la transaction pour éviter les transactions échouées
             const status = await connection.getSignatureStatus(sigInfo.signature);
             
-            // Si la transaction a échoué (err !== null) ou n'existe pas, l'ignorer
-            if (status?.value?.err || !status?.value) {
-              console.log(`[getMintTransactions] Skipping failed transaction: ${sigInfo.signature}`);
+            // Ne filtrer QUE si la transaction a explicitement échoué (err existe et n'est pas null)
+            // Ne pas filtrer si status.value est null/undefined (peut être normal pour certaines transactions anciennes)
+            // Une transaction réussie a status.value.confirmationStatus défini et err === null
+            // Une transaction échouée a status.value.err défini et non-null
+            if (status?.value && status.value.err !== null && status.value.err !== undefined) {
+              console.log(`[getMintTransactions] Skipping failed transaction: ${sigInfo.signature}, err: ${JSON.stringify(status.value.err)}`);
               processedCount++;
               consecutiveErrors = 0;
               continue;
@@ -830,9 +833,12 @@ export async function getMintTransactions(limit: number = 50, existingSignatures
               // Vérifier d'abord le statut de la transaction pour éviter les transactions échouées
               const status = await connection.getSignatureStatus(sigInfo.signature);
               
-              // Si la transaction a échoué (err !== null) ou n'existe pas, l'ignorer
-              if (status?.value?.err || !status?.value) {
-                console.log(`[getMintTransactions] Token mint: Skipping failed transaction: ${sigInfo.signature}`);
+              // Ne filtrer QUE si la transaction a explicitement échoué (err existe et n'est pas null)
+              // Ne pas filtrer si status.value est null/undefined (peut être normal pour certaines transactions anciennes)
+              // Une transaction réussie a status.value.confirmationStatus défini et err === null
+              // Une transaction échouée a status.value.err défini et non-null
+              if (status?.value && status.value.err !== null && status.value.err !== undefined) {
+                console.log(`[getMintTransactions] Token mint: Skipping failed transaction: ${sigInfo.signature}, err: ${JSON.stringify(status.value.err)}`);
                 processedCount++;
                 consecutiveErrors = 0;
                 continue;
@@ -974,9 +980,12 @@ export async function getTransferTransactions(limit: number = 50): Promise<Trans
           // Vérifier d'abord le statut de la transaction pour éviter les transactions échouées
           const status = await connection.getSignatureStatus(sigInfo.signature);
           
-          // Si la transaction a échoué (err !== null) ou n'existe pas, l'ignorer
-          if (status?.value?.err || !status?.value) {
-            console.log(`[getTransferTransactions] Skipping failed transaction: ${sigInfo.signature}`);
+          // Ne filtrer QUE si la transaction a explicitement échoué (err existe et n'est pas null)
+          // Ne pas filtrer si status.value est null/undefined (peut être normal pour certaines transactions anciennes)
+          // Une transaction réussie a status.value.confirmationStatus défini et err === null
+          // Une transaction échouée a status.value.err défini et non-null
+          if (status?.value && status.value.err !== null && status.value.err !== undefined) {
+            console.log(`[getTransferTransactions] Skipping failed transaction: ${sigInfo.signature}, err: ${JSON.stringify(status.value.err)}`);
             processedCount++;
             consecutiveErrors = 0;
             continue;
