@@ -533,7 +533,7 @@ export default function ModernChart({ transactions }: ModernChartProps) {
       {/* Graphiques côte à côte */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
         {/* Graphique en aires - SOL et Tokens ajoutés */}
-        <div className="bg-white dark:bg-gray-800 rounded-xl shadow-lg p-3 border border-gray-200 dark:border-gray-700">
+        <div className="bg-white dark:bg-gray-800 rounded-xl shadow-lg pt-3 px-3 pb-0 border border-gray-200 dark:border-gray-700">
         <div className="flex items-center justify-between mb-2">
           <h3 className="text-base font-semibold text-gray-900 dark:text-white">
             Liquidity Added Over Time (1h intervals)
@@ -615,7 +615,7 @@ export default function ModernChart({ transactions }: ModernChartProps) {
         </div>
 
         {/* Graphique cumulatif */}
-        <div className="bg-white dark:bg-gray-800 rounded-xl shadow-lg p-3 border border-gray-200 dark:border-gray-700">
+        <div className="bg-white dark:bg-gray-800 rounded-xl shadow-lg pt-3 px-3 pb-0 border border-gray-200 dark:border-gray-700">
         <div className="flex items-center justify-between mb-2">
           <h3 className="text-base font-semibold text-gray-900 dark:text-white">
             Cumulative Liquidity Over Time
@@ -700,6 +700,98 @@ export default function ModernChart({ transactions }: ModernChartProps) {
         </div>
         </div>
       </div>
+
+      {/* Average Liquidity Addition Card */}
+      {(() => {
+        const now = Math.floor(Date.now() / 1000);
+        const twentyFourHoursAgo = now - (24 * 60 * 60);
+        
+        // Filtrer les transactions des dernières 24 heures
+        const last24hTransactions = transactions.filter(tx => tx.timestamp >= twentyFourHoursAgo);
+        
+        if (last24hTransactions.length === 0) {
+          return null;
+        }
+        
+        // Calculer les totaux
+        const totalSol = last24hTransactions.reduce((sum, tx) => sum + tx.solAmount, 0);
+        const totalTokens = last24hTransactions.reduce((sum, tx) => sum + tx.tokenAmount, 0);
+        
+        // Calculer le temps écoulé (en heures)
+        const oldestTx = Math.min(...last24hTransactions.map(tx => tx.timestamp));
+        const newestTx = Math.max(...last24hTransactions.map(tx => tx.timestamp));
+        const hoursElapsed = (newestTx - oldestTx) / 3600;
+        const hoursElapsedDisplay = hoursElapsed > 0 ? hoursElapsed.toFixed(1) : '0.0';
+        
+        // Calculer les moyennes par heure
+        const avgSolPerHour = hoursElapsed > 0 ? totalSol / hoursElapsed : 0;
+        const avgTokensPerHour = hoursElapsed > 0 ? totalTokens / hoursElapsed : 0;
+        
+        // Calculer le taux de transactions
+        const txRate = hoursElapsed > 0 ? last24hTransactions.length / hoursElapsed : 0;
+        
+        return (
+          <div className="bg-white dark:bg-gray-800 rounded-xl shadow-lg p-4 border border-gray-200 dark:border-gray-700">
+            <h3 className="text-base font-semibold text-gray-900 dark:text-white mb-4">
+              Average Liquidity Addition (Last 24 Hours)
+            </h3>
+            
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {/* Average SOL/Hour */}
+              <div className="space-y-2">
+                <div className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide">
+                  Average SOL/Hour
+                </div>
+                <div className="text-2xl font-bold text-gray-900 dark:text-white">
+                  {avgSolPerHour.toFixed(6)} SOL
+                </div>
+                <div className="text-sm text-gray-600 dark:text-gray-400">
+                  Total: {totalSol.toFixed(4)} SOL ({last24hTransactions.length} transactions)
+                </div>
+              </div>
+              
+              {/* Average $LIQUID/Hour */}
+              <div className="space-y-2">
+                <div className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide">
+                  Average $LIQUID/Hour
+                </div>
+                <div className="text-2xl font-bold text-gray-900 dark:text-white">
+                  {avgTokensPerHour.toLocaleString('en-US', { maximumFractionDigits: 1 })}
+                </div>
+                <div className="text-sm text-gray-600 dark:text-gray-400">
+                  Total: {totalTokens.toLocaleString('en-US', { maximumFractionDigits: 1 })} $LIQUID
+                </div>
+              </div>
+              
+              {/* Transactions (24h) */}
+              <div className="space-y-2">
+                <div className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide">
+                  Transactions (24h)
+                </div>
+                <div className="text-2xl font-bold text-gray-900 dark:text-white">
+                  {last24hTransactions.length}
+                </div>
+                <div className="text-sm text-gray-600 dark:text-gray-400">
+                  Over {hoursElapsedDisplay} hours
+                </div>
+              </div>
+              
+              {/* Rate */}
+              <div className="space-y-2">
+                <div className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide">
+                  Rate
+                </div>
+                <div className="text-2xl font-bold text-gray-900 dark:text-white">
+                  {txRate.toFixed(2)}/hour
+                </div>
+                <div className="text-sm text-gray-600 dark:text-gray-400">
+                  {last24hTransactions.length} transactions in 24h
+                </div>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 }
