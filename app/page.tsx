@@ -15,7 +15,6 @@ export default function Dashboard() {
   const [syncing, setSyncing] = useState(false);
   const [lastSyncTime, setLastSyncTime] = useState<Date | null>(null);
   const [timeUntilNextSync, setTimeUntilNextSync] = useState<number>(0);
-  const [cleaning, setCleaning] = useState(false);
 
   const fetchData = async () => {
     setLoading(true);
@@ -145,7 +144,7 @@ export default function Dashboard() {
                 onClick={async () => {
                   setSyncing(true);
                   try {
-                    const res = await fetch('/api/mints/sync?getAll=true');
+                    const res = await fetch('/api/mints/sync?limit=60');
                     const data = await res.json();
                     if (res.ok && data.success) {
                       alert(`Sync successful: ${data.added} new transactions added. Total: ${data.total}`);
@@ -163,41 +162,13 @@ export default function Dashboard() {
                 }}
                 disabled={syncing || loading || timeUntilNextSync > 0}
                 className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors text-sm font-medium"
-                title={timeUntilNextSync > 0 ? `Please wait ${Math.ceil(timeUntilNextSync / 1000)}s before syncing again` : ''}
+                title={timeUntilNextSync > 0 ? `Please wait ${Math.ceil(timeUntilNextSync / 1000)}s before syncing again` : 'Sync the last 60 transactions'}
               >
                 {syncing 
                   ? 'Syncing...' 
                   : timeUntilNextSync > 0 
                     ? `Sync All (${Math.ceil(timeUntilNextSync / 1000)}s)`
                     : 'Sync All'}
-              </button>
-              <button
-                onClick={async () => {
-                  if (!confirm('This will check all stored transactions and remove failed ones. Continue?')) {
-                    return;
-                  }
-                  setCleaning(true);
-                  try {
-                    const res = await fetch('/api/mints/cleanup');
-                    const data = await res.json();
-                    if (res.ok && data.success) {
-                      alert(`Cleanup completed:\n- Checked: ${data.checked} transactions\n- Found: ${data.failed} failed transactions\n- Removed: ${data.removed} transactions`);
-                      fetchData(); // Rafraîchir les données
-                    } else {
-                      alert(`Error: ${data.error || 'Cleanup failed'}`);
-                    }
-                  } catch (error) {
-                    console.error('Error cleaning up:', error);
-                    alert('Error during cleanup');
-                  } finally {
-                    setCleaning(false);
-                  }
-                }}
-                disabled={cleaning || loading}
-                className="px-4 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors text-sm font-medium"
-                title="Check and remove failed transactions from storage"
-              >
-                {cleaning ? 'Cleaning...' : 'Cleanup'}
               </button>
             </div>
           </div>
@@ -233,13 +204,20 @@ export default function Dashboard() {
                 })}
                 subtitle="Since the beginning"
               />
-              {stats.tokenPrice !== null && stats.tokenPrice !== undefined && (
-                <StatsCard
-                  title="Token Price"
-                  value={`${stats.tokenPrice.toFixed(8)} SOL`}
-                  subtitle={`${stats.tokenPriceSol?.toFixed(4) || 0} SOL / ${stats.tokenPriceToken?.toLocaleString('en-US', { maximumFractionDigits: 2 }) || 0} tokens`}
-                />
-              )}
+              {(() => {
+                // Calculer le prix depuis les balances si le prix n'est pas disponible
+                const price = stats.tokenPrice ?? (stats.tokenBalance > 0 && stats.solBalance > 0 ? stats.solBalance / stats.tokenBalance : null);
+                const priceSol = stats.tokenPriceSol ?? stats.solBalance;
+                const priceToken = stats.tokenPriceToken ?? stats.tokenBalance;
+                
+                return price != null && price > 0 ? (
+                  <StatsCard
+                    title="Token Price"
+                    value={`${price.toFixed(8)} SOL`}
+                    subtitle={`${priceSol.toFixed(4)} SOL / ${priceToken.toLocaleString('en-US', { maximumFractionDigits: 2 })} tokens`}
+                  />
+                ) : null;
+              })()}
             </div>
           </div>
         )}

@@ -1150,11 +1150,18 @@ export async function getTokenPrice(): Promise<{ price: number; solBalance: numb
       // Prendre le premier compte token (normalement il n'y en a qu'un)
       const tokenAccount = tokenAccounts.value[0];
       tokenBalance = tokenAccount.account.data.parsed.info.tokenAmount.uiAmount || 0;
+    } else {
+      // Si aucun compte token trouvé, essayer avec getTokenBalance
+      console.log('[getTokenPrice] No token account found, trying getTokenBalance...');
+      tokenBalance = await getTokenBalance(LP_POOL_ADDRESS, TOKEN_MINT_ADDRESS);
     }
+    
+    console.log(`[getTokenPrice] SOL balance: ${solBalanceInSol}, Token balance: ${tokenBalance}`);
     
     // Calculer le prix : SOL / Tokens
     if (tokenBalance > 0 && solBalanceInSol > 0) {
       const price = solBalanceInSol / tokenBalance;
+      console.log(`[getTokenPrice] Calculated price: ${price} SOL per token`);
       return {
         price,
         solBalance: solBalanceInSol,
@@ -1162,6 +1169,7 @@ export async function getTokenPrice(): Promise<{ price: number; solBalance: numb
       };
     }
     
+    console.log('[getTokenPrice] Cannot calculate price: tokenBalance or solBalance is 0');
     return null;
   } catch (error) {
     console.error('Error getting token price:', error);

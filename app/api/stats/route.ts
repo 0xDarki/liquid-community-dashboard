@@ -8,10 +8,21 @@ export const revalidate = 0; // Disable static generation
 
 export async function GET() {
   try {
-    // Vérifier le cache
+    // Vérifier le cache (mais toujours récupérer le prix en temps réel)
     const cacheKey = 'pool-stats';
-    const cached = cache.get(cacheKey);
+    const cached = cache.get(cacheKey) as any;
+    
+    // Récupérer le prix du token depuis la LP (toujours en temps réel, pas de cache)
+    const tokenPrice = await getTokenPrice();
+    console.log('[Stats API] Token price result:', tokenPrice);
+    
+    // Si on a un cache valide, l'utiliser mais toujours mettre à jour le prix
     if (cached) {
+      cached.tokenPrice = tokenPrice?.price ?? null;
+      cached.tokenPriceSol = tokenPrice?.solBalance ?? null;
+      cached.tokenPriceToken = tokenPrice?.tokenBalance ?? null;
+      cache.set(cacheKey, cached, 120000);
+      console.log('[Stats API] Returning cached stats with updated price:', cached.tokenPrice);
       return NextResponse.json(cached);
     }
 
@@ -40,9 +51,6 @@ export async function GET() {
     
     const totalTokensTransferred = transferTxs.reduce((sum, tx) => sum + tx.tokenAmount, 0);
     
-    // Récupérer le prix du token depuis la LP
-    const tokenPrice = await getTokenPrice();
-    
     const stats = {
       solBalance,
       tokenBalance,
@@ -51,10 +59,12 @@ export async function GET() {
       totalSolAdded,
       totalTokensAdded,
       totalTokensTransferred,
-      tokenPrice: tokenPrice?.price || null,
-      tokenPriceSol: tokenPrice?.solBalance || null,
-      tokenPriceToken: tokenPrice?.tokenBalance || null,
+      tokenPrice: tokenPrice?.price ?? null,
+      tokenPriceSol: tokenPrice?.solBalance ?? null,
+      tokenPriceToken: tokenPrice?.tokenBalance ?? null,
     };
+    
+    console.log('[Stats API] Stats with price:', { ...stats, tokenPrice: stats.tokenPrice });
     
     // Mettre en cache pendant 2 minutes pour réduire les requêtes
     cache.set(cacheKey, stats, 120000);
