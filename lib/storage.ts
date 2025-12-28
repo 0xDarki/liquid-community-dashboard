@@ -326,7 +326,8 @@ export async function syncMints(limit: number = 50, getAll: boolean = false): Pr
     console.log(`[syncMints] Already have ${existingMints.length} stored transactions (using as cache)`);
     console.log(`[syncMints] Storage mode: ${useBlobStorage() ? 'Vercel Blob' : 'Local filesystem'}`);
     
-    // Si getAll=true, récupérer jusqu'à ~3000 transactions (pour éviter timeout Vercel de 300s)
+    // Si getAll=true, récupérer jusqu'à ~3000 transactions en 2 batches de 1500 (pour éviter timeout Vercel de 300s)
+    // Chaque batch de 1500 transactions prend ~200s, bien en dessous du timeout de 300s
     // L'utilisateur peut faire plusieurs syncs successifs pour récupérer progressivement toutes les transactions
     // Sinon, utiliser la limite fournie
     const syncLimit = getAll ? 0 : Math.min(limit, 1000);

@@ -20,7 +20,7 @@ export async function POST(request: Request) {
       added: result.added,
       total: result.total,
       message: getAll 
-        ? `Added ${result.added} new transactions. Total: ${result.total}. Note: Sync is limited to ~3000 transactions per run to avoid timeout. You can run sync again to continue fetching more transactions.`
+        ? `Added ${result.added} new transactions. Total: ${result.total}. Note: Sync processes 1500 transactions per batch (2 batches = ~3000 transactions) to stay under Vercel's 300s timeout. You can run sync again to continue fetching more transactions.`
         : `Added ${result.added} new transactions. Total: ${result.total}`
     });
   } catch (error: any) {
@@ -48,7 +48,7 @@ export async function GET(request: Request) {
       added: result.added,
       total: result.total,
       message: getAll 
-        ? `Added ${result.added} new transactions. Total: ${result.total}. Note: Sync is limited to ~3000 transactions per run to avoid timeout. You can run sync again to continue fetching more transactions.`
+        ? `Added ${result.added} new transactions. Total: ${result.total}. Note: Sync processes 1500 transactions per batch (2 batches = ~3000 transactions) to stay under Vercel's 300s timeout. You can run sync again to continue fetching more transactions.`
         : `Added ${result.added} new transactions. Total: ${result.total}`
     });
   } catch (error: any) {

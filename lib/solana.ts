@@ -603,12 +603,14 @@ export async function getMintTransactions(limit: number = 50): Promise<MintTrans
       let before: string | undefined = undefined;
       let hasMore = true;
       let pageCount = 0;
-      // Pour getAll, traiter 1500 transactions par requête, donc 2 requêtes pour 3000 transactions
+      // Pour getAll, traiter 1500 transactions par batch pour éviter le timeout Vercel (300 secondes)
+      // Calcul : 1500 transactions × 120ms = 180s + overhead (~20s) = ~200s < 300s timeout
       // L'API limite getSignaturesForAddress à 1000 signatures, donc on fait 2 requêtes de 1000 signatures
-      // et on traite 1500 transactions par batch
-      const maxPages = getAll ? 2 : 2; // Maximum 2 pages en mode getAll (2 pages × 1500 tx = ~3000 transactions max)
-      const maxTransactionsForGetAll = 3000; // Limite pour éviter timeout
-      const transactionsPerBatch = 1500; // Traiter 1500 transactions par batch
+      // Batch 1 : 1000 signatures récupérées, toutes traitées (1000 transactions)
+      // Batch 2 : 1000 signatures récupérées, 500 traitées (pour atteindre 1500 au total)
+      const maxPages = getAll ? 2 : 2; // Maximum 2 pages en mode getAll (2 batches × 1500 tx = ~3000 transactions max)
+      const maxTransactionsForGetAll = 3000; // Limite totale pour éviter timeout
+      const transactionsPerBatch = 1500; // Traiter 1500 transactions par batch (limite pour rester < 300s timeout Vercel)
       
       while (hasMore && transactions.length < (getAll ? maxTransactionsForGetAll : limit) && pageCount < maxPages) {
         // Pour getAll, récupérer 1000 signatures par requête (limite max API)
@@ -746,9 +748,10 @@ export async function getMintTransactions(limit: number = 50): Promise<MintTrans
         let before: string | undefined = undefined;
         let hasMore = true;
         let pageCount = 0;
-        // Pour getAll, traiter 1500 transactions par requête, donc 2 requêtes pour 3000 transactions
-        const maxPages = getAll ? 2 : 1; // 2 pages max en getAll pour token mint (2 × 1500 = ~3000 transactions max)
-        const transactionsPerBatch = 1500; // Traiter 1500 transactions par batch
+        // Pour getAll, traiter 1500 transactions par batch pour éviter le timeout Vercel (300 secondes)
+        // Calcul : 1500 transactions × 120ms = 180s + overhead (~20s) = ~200s < 300s timeout
+        const maxPages = getAll ? 2 : 1; // 2 pages max en getAll pour token mint (2 batches × 1500 = ~3000 transactions max)
+        const transactionsPerBatch = 1500; // Traiter 1500 transactions par batch (limite pour rester < 300s timeout Vercel)
         
         while (hasMore && (getAll || transactions.length < limit) && pageCount < maxPages) {
           // Utiliser 1000 signatures par requête (limite max API), mais traiter 1500 transactions par batch
