@@ -326,13 +326,14 @@ export async function syncMints(limit: number = 50, getAll: boolean = false): Pr
     console.log(`[syncMints] Already have ${existingMints.length} stored transactions (using as cache)`);
     console.log(`[syncMints] Storage mode: ${useBlobStorage() ? 'Vercel Blob' : 'Local filesystem'}`);
     
-    // Si getAll=true, récupérer seulement les 20 dernières transactions (pour synchronisation rapide)
+    // Si getAll=true, récupérer TOUTES les transactions disponibles (limit=0 déclenche le mode getAll dans getMintTransactions)
     // Sinon, utiliser la limite fournie
-    const syncLimit = getAll ? 20 : Math.min(limit, 1000);
+    const syncLimit = getAll ? 0 : Math.min(limit, 1000);
     
     const { getMintTransactions } = await import('./solana');
     
-    // Récupérer les mints depuis la blockchain (seulement les plus récentes)
+    // Récupérer les mints depuis la blockchain
+    // Si getAll=true, getMintTransactions(0) récupérera toutes les transactions disponibles
     const newMints = await getMintTransactions(syncLimit);
     
     console.log(`[syncMints] Retrieved ${newMints.length} transactions from blockchain`);
