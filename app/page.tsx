@@ -1,0 +1,218 @@
+'use client';
+
+import React, { useEffect, useState } from 'react';
+import StatsCard from '@/components/StatsCard';
+import TransactionTable from '@/components/TransactionTable';
+import type { MintTransaction, TransferTransaction, PoolStats } from '@/lib/solana';
+
+export default function Dashboard() {
+  const [stats, setStats] = useState<PoolStats | null>(null);
+  const [mintTransactions, setMintTransactions] = useState<MintTransaction[]>([]);
+  const [transferTransactions, setTransferTransactions] = useState<TransferTransaction[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [lastUpdate, setLastUpdate] = useState<Date>(new Date());
+  const [error, setError] = useState<string | null>(null);
+
+  const fetchData = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      // Récupérer toutes les transactions MINT stockées
+      // Ne pas synchroniser automatiquement pour éviter trop de requêtes
+      // La synchronisation peut être faite manuellement via /api/mints/sync
+      const [statsRes, mintsRes, transfersRes] = await Promise.all([
+        fetch('/api/stats'),
+        fetch('/api/mints?limit=0'), // 0 = toutes les transactions stockées
+        fetch('/api/transfers?limit=20'), // Réduit à 20 pour les transfers
+      ]);
+
+      // Vérifier les erreurs de connexion
+      if (!statsRes.ok || !mintsRes.ok || !transfersRes.ok) {
+        // Vérifier si c'est une erreur de connexion
+        if (statsRes.status === 0 || mintsRes.status === 0 || transfersRes.status === 0) {
+          throw new Error('CONNECTION_REFUSED');
+        }
+        
+        // Vérifier les erreurs 429
+        if (statsRes.status === 429 || mintsRes.status === 429 || transfersRes.status === 429) {
+          throw new Error('429');
+        }
+        
+        // Vérifier les erreurs 503
+        if (statsRes.status === 503 || mintsRes.status === 503 || transfersRes.status === 503) {
+          throw new Error('503');
+        }
+        
+        const errorData = await statsRes.json().catch(() => ({}));
+        throw new Error(errorData.error || 'Failed to fetch data from API');
+      }
+
+      const [poolStats, mints, transfers] = await Promise.all([
+        statsRes.json(),
+        mintsRes.json(),
+        transfersRes.json(),
+      ]);
+
+      setStats(poolStats);
+      setMintTransactions(mints);
+      setTransferTransactions(transfers);
+      setLastUpdate(new Date());
+    } catch (error) {
+      console.error('Error fetching data:', error);
+      if (error instanceof Error) {
+        if (error.message === 'CONNECTION_REFUSED' || error.message.includes('Failed to fetch')) {
+          setError('Unable to connect to server. Make sure the Next.js server is running (npm run dev).');
+        } else if (error.message.includes('429') || error.message === '429') {
+          setError('Too many requests (429). Please configure a private RPC in .env.local or wait a few moments.');
+        } else if (error.message.includes('503') || error.message === '503' || error.message.includes('Service Unavailable')) {
+          setError('RPC service unavailable (503). The public RPC is overloaded. Please configure a private RPC in .env.local.');
+        } else {
+          setError(`Error: ${error.message}`);
+        }
+      } else {
+        setError('Error loading data. Check your RPC connection.');
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchData();
+    // Rafraîchir toutes les 2 minutes (augmenté pour réduire la charge sur le RPC)
+    const interval = setInterval(fetchData, 120000);
+    return () => clearInterval(interval);
+  }, []);
+
+  if (loading && !stats) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 dark:from-gray-900 dark:to-gray-800 flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600 mx-auto mb-4"></div>
+          <p className="text-gray-600 dark:text-gray-400">Loading data...</p>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 dark:from-gray-900 dark:to-gray-800">
+      <div className="container mx-auto px-4 py-6 max-w-7xl">
+        {/* Header */}
+        <div className="mb-6">
+          <div className="flex flex-col md:flex-row md:items-center md:justify-between mb-4">
+            <div>
+              <h1 className="text-3xl font-bold text-gray-900 dark:text-white mb-1">
+                Liquid Community Dashboard
+              </h1>
+              <p className="text-sm text-gray-600 dark:text-gray-400">
+                Liquidity additions tracking - each liquidity addition is followed by a burn
+              </p>
+            </div>
+            <div className="mt-4 md:mt-0 flex items-center gap-3 flex-wrap">
+              <button
+                onClick={fetchData}
+                disabled={loading}
+                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors text-sm font-medium"
+              >
+                {loading ? 'Refreshing...' : 'Refresh'}
+              </button>
+              {process.env.NODE_ENV === 'development' && (
+                <button
+                  onClick={async () => {
+                    try {
+                      const res = await fetch('/api/mints/sync?getAll=true');
+                      const data = await res.json();
+                      if (res.ok && data.success) {
+                        alert(`Sync successful: ${data.added} new transactions added. Total: ${data.total}`);
+                        fetchData();
+                      } else {
+                        alert(`Error: ${data.error || 'Sync failed'}`);
+                      }
+                    } catch (error) {
+                      console.error('Error syncing:', error);
+                      alert('Error during synchronization');
+                    }
+                  }}
+                  className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors text-sm font-medium"
+                >
+                  Sync
+                </button>
+              )}
+            </div>
+          </div>
+          <div className="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
+            <span>Last update:</span>
+            <span className="font-medium">{lastUpdate.toLocaleTimeString('en-US')}</span>
+          </div>
+          {error && (
+            <div className="mt-4 p-4 bg-red-100 dark:bg-red-900 border border-red-400 dark:border-red-700 rounded-lg">
+              <p className="text-red-800 dark:text-red-200 text-sm">{error}</p>
+            </div>
+          )}
+        </div>
+
+        {/* Stats Cards */}
+        {stats && (
+          <div className="mb-6">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <StatsCard
+                title="Liquidity Additions"
+                value={stats.totalMints.toLocaleString('en-US')}
+                subtitle="Total additions"
+              />
+              <StatsCard
+                title="Total SOL Added"
+                value={`${stats.totalSolAdded.toFixed(4)} SOL`}
+                subtitle="Since the beginning"
+              />
+              <StatsCard
+                title="Total Tokens Added"
+                value={stats.totalTokensAdded.toLocaleString('en-US', {
+                  maximumFractionDigits: 2,
+                })}
+                subtitle="Since the beginning"
+              />
+            </div>
+          </div>
+        )}
+
+        {/* Transactions */}
+        <div className="mb-6">
+          <TransactionTable
+            transactions={mintTransactions}
+            type="mint"
+          />
+        </div>
+
+        {/* Adresses importantes */}
+        <div className="bg-white dark:bg-gray-800 rounded-lg shadow-lg p-4 border border-gray-200 dark:border-gray-700">
+          <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-3">
+            Important Addresses
+          </h2>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs">
+            <div>
+              <span className="font-medium text-gray-700 dark:text-gray-300 block mb-1">LP Pool</span>
+              <span className="font-mono text-primary-600 dark:text-primary-400 break-all">
+                5DXmqgrTivkdwg43UMU1YSV5WAvVmgvjBxsVP1aLV4Dk
+              </span>
+            </div>
+            <div>
+              <span className="font-medium text-gray-700 dark:text-gray-300 block mb-1">Token Mint</span>
+              <span className="font-mono text-primary-600 dark:text-primary-400 break-all">
+                J2kvsjCVGmKYH5nqo9X7VJGH2jpmKkNdzAaYUfKspump
+              </span>
+            </div>
+            <div>
+              <span className="font-medium text-gray-700 dark:text-gray-300 block mb-1">Buyback</span>
+              <span className="font-mono text-primary-600 dark:text-primary-400 break-all">
+                1nc1nerator11111111111111111111111111111111
+              </span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
