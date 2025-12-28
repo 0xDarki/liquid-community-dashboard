@@ -4,11 +4,9 @@
   "installCommand": "npm install",
   "framework": "nextjs",
   "regions": ["iad1"],
-  "crons": [
-    {
-      "path": "/api/cron/sync",
-      "schedule": "*/2 * * * *"
-    }
-  ]
+  "crons": [{
+    "path": "/api/cron/sync",
+    "schedule": "*/2 * * * *"
+  }]
 }
 

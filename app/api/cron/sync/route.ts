@@ -5,14 +5,18 @@ export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
 // Route pour le cron job Vercel - synchronisation automatique
+// Vercel envoie automatiquement le header 'x-vercel-signature' pour les cron jobs
 export async function GET(request: Request) {
   try {
-    // Vérifier le secret pour sécuriser l'endpoint (optionnel mais recommandé)
-    const authHeader = request.headers.get('authorization');
+    // Vérifier si c'est un appel depuis Vercel Cron (header x-vercel-signature)
+    const vercelSignature = request.headers.get('x-vercel-signature');
     const cronSecret = process.env.CRON_SECRET;
     
     // Si CRON_SECRET est défini, vérifier l'autorisation
-    if (cronSecret) {
+    // Vercel envoie automatiquement x-vercel-signature pour les cron jobs
+    if (cronSecret && !vercelSignature) {
+      // Si pas de signature Vercel, vérifier le Bearer token
+      const authHeader = request.headers.get('authorization');
       if (authHeader !== `Bearer ${cronSecret}`) {
         return NextResponse.json(
           { error: 'Unauthorized' },

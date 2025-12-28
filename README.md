@@ -100,15 +100,25 @@ vercel env add NEXT_PUBLIC_SOLANA_RPC_URL
 
 **Setup Automatic Sync (Cron Job):**
 
-The cron job is already configured in `vercel.json` to run every 2 minutes. To secure it (optional but recommended):
+The cron job is configured in `vercel.json` to run every 2 minutes. After deploying, Vercel will automatically create the cron job.
+
+**To verify the cron job is active:**
 
 1. Go to your Vercel project dashboard
-2. Navigate to **Settings** → **Environment Variables**
-3. Add a new variable:
+2. Navigate to **Settings** → **Cron Jobs**
+3. You should see the cron job listed with:
+   - **Path**: `/api/cron/sync`
+   - **Schedule**: `*/2 * * * *` (every 2 minutes)
+
+**Optional Security:**
+
+To secure the endpoint (optional but recommended):
+
+1. Go to **Settings** → **Environment Variables**
+2. Add a new variable:
    - Name: `CRON_SECRET`
    - Value: A random secret string (e.g., generate with `openssl rand -hex 32`)
    - Environment: Production (and Preview if needed)
-4. Vercel will automatically call `/api/cron/sync` every 2 minutes
 
 **Note**: The cron job will sync the 20 most recent transactions automatically. For a full sync, use the "Sync All" button in the dashboard.
 

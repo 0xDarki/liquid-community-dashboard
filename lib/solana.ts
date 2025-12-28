@@ -574,7 +574,8 @@ function delay(ms: number): Promise<void> {
 // Délai minimum entre requêtes pour respecter la limite de 10 req/s
 // 10 req/s = 100ms entre requêtes minimum
 // Utiliser 120ms pour être sûr de rester en dessous même avec les retries automatiques
-const MIN_REQUEST_DELAY = 120; // 120ms donne ~8 req/s max, bien en dessous de 10 req/s
+// Augmenter le délai pour éviter les 429 (10 req/s = 100ms minimum, utiliser 150ms pour être sûr)
+const MIN_REQUEST_DELAY = 150; // 150ms donne ~6.7 req/s max, bien en dessous de 10 req/s
 
 // Fonction pour obtenir les transactions MINT récentes
 export async function getMintTransactions(limit: number = 50, existingSignatures?: Set<string>): Promise<MintTransaction[]> {
@@ -696,7 +697,7 @@ export async function getMintTransactions(limit: number = 50, existingSignatures
                 hasMore = false;
                 break;
               }
-              await delay(2000); // Délai réduit à 2 secondes pour les erreurs 429/503
+              await delay(5000); // Délai augmenté à 5 secondes pour les erreurs 429/503
               continue;
             }
           }
@@ -832,7 +833,7 @@ export async function getMintTransactions(limit: number = 50, existingSignatures
                   hasMore = false;
                   break;
                 }
-                await delay(2000); // Délai réduit à 2 secondes pour les erreurs 429/503
+                await delay(5000); // Délai augmenté à 5 secondes pour les erreurs 429/503
                 continue;
               }
             }
@@ -952,7 +953,7 @@ export async function getTransferTransactions(limit: number = 50): Promise<Trans
               console.warn('Too many 503 errors for transfers, stopping and returning what we have');
               break; // Break au lieu de throw pour retourner ce qu'on a
             }
-            await delay(3000); // Délai augmenté à 3 secondes
+            await delay(5000); // Délai augmenté à 5 secondes pour les erreurs 429/503
             continue;
           }
         }
