@@ -12,6 +12,7 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(true);
   const [lastUpdate, setLastUpdate] = useState<Date>(new Date());
   const [error, setError] = useState<string | null>(null);
+  const [syncing, setSyncing] = useState(false);
 
   const fetchData = async () => {
     setLoading(true);
@@ -117,28 +118,30 @@ export default function Dashboard() {
               >
                 {loading ? 'Refreshing...' : 'Refresh'}
               </button>
-              {process.env.NODE_ENV === 'development' && (
-                <button
-                  onClick={async () => {
-                    try {
-                      const res = await fetch('/api/mints/sync?getAll=true');
-                      const data = await res.json();
-                      if (res.ok && data.success) {
-                        alert(`Sync successful: ${data.added} new transactions added. Total: ${data.total}`);
-                        fetchData();
-                      } else {
-                        alert(`Error: ${data.error || 'Sync failed'}`);
-                      }
-                    } catch (error) {
-                      console.error('Error syncing:', error);
-                      alert('Error during synchronization');
+              <button
+                onClick={async () => {
+                  setSyncing(true);
+                  try {
+                    const res = await fetch('/api/mints/sync?getAll=true');
+                    const data = await res.json();
+                    if (res.ok && data.success) {
+                      alert(`Sync successful: ${data.added} new transactions added. Total: ${data.total}`);
+                      fetchData();
+                    } else {
+                      alert(`Error: ${data.error || 'Sync failed'}`);
                     }
-                  }}
-                  className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors text-sm font-medium"
-                >
-                  Sync
-                </button>
-              )}
+                  } catch (error) {
+                    console.error('Error syncing:', error);
+                    alert('Error during synchronization');
+                  } finally {
+                    setSyncing(false);
+                  }
+                }}
+                disabled={syncing || loading}
+                className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors text-sm font-medium"
+              >
+                {syncing ? 'Syncing...' : 'Sync All'}
+              </button>
             </div>
           </div>
           <div className="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
