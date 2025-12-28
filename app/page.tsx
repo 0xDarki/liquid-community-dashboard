@@ -29,11 +29,12 @@ export default function Dashboard() {
       // Récupérer toutes les transactions MINT stockées
       // Ne pas synchroniser automatiquement pour éviter trop de requêtes
       // La synchronisation peut être faite manuellement via /api/mints/sync
-      const [statsRes, mintsRes, transfersRes, historyRes] = await Promise.all([
+      const [statsRes, mintsRes, transfersRes, historyRes, averageRes] = await Promise.all([
         fetch('/api/stats'),
         fetch('/api/mints?limit=0'), // 0 = toutes les transactions stockées
         fetch('/api/transfers?limit=20'), // Réduit à 20 pour les transfers
         fetch('/api/history'),
+        fetch('/api/stats/average'),
       ]);
 
       // Vérifier les erreurs de connexion
