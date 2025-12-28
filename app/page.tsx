@@ -77,8 +77,11 @@ export default function Dashboard() {
       setLastUpdate(new Date());
       
       // Mettre à jour le lastSyncTime depuis le sync state partagé
-      if (syncState.lastSync > 0) {
+      if (syncState && syncState.lastSync && syncState.lastSync > 0) {
         setLastSyncTime(new Date(syncState.lastSync));
+      } else {
+        // Si pas de sync state, vérifier dans le useEffect qui se charge aussi
+        setLastSyncTime(null);
       }
     } catch (error) {
       console.error('Error fetching data:', error);
@@ -115,7 +118,8 @@ export default function Dashboard() {
         const res = await fetch('/api/sync-state');
         if (res.ok) {
           const syncState = await res.json();
-          if (syncState.lastSync > 0) {
+          console.log('Sync state received:', syncState); // Debug
+          if (syncState && syncState.lastSync && syncState.lastSync > 0) {
             const now = Date.now();
             const lastSync = syncState.lastSync;
             const twoMinutes = 2 * 60 * 1000; // 2 minutes en millisecondes
@@ -127,6 +131,7 @@ export default function Dashboard() {
             setLastSyncTime(new Date(lastSync));
           } else {
             setTimeUntilNextSync(0);
+            // Ne pas réinitialiser lastSyncTime si on a déjà une valeur valide
           }
         }
       } catch (error) {
@@ -180,6 +185,8 @@ export default function Dashboard() {
                     const data = await res.json();
                     if (res.ok && data.success) {
                       // Le sync state est maintenant mis à jour côté serveur
+                      // Attendre un peu pour que le sync state soit bien sauvegardé
+                      await new Promise(resolve => setTimeout(resolve, 500));
                       // Rafraîchir toutes les données pour qu'elles soient à jour
                       await fetchData();
                     } else {

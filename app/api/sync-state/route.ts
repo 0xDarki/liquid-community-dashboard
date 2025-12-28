@@ -20,7 +20,11 @@ export async function GET() {
     
     // Retourner l'état sans le syncStartTime (pas nécessaire côté client)
     const { syncStartTime, ...stateToReturn } = syncState;
-    return NextResponse.json(stateToReturn);
+    // S'assurer que lastSync est toujours présent (même si 0)
+    return NextResponse.json({
+      lastSync: stateToReturn.lastSync || 0,
+      isSyncing: stateToReturn.isSyncing || false,
+    });
   } catch (error: any) {
     console.error('Error fetching sync state:', error);
     return NextResponse.json(
