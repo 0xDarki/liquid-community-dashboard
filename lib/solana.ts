@@ -1253,18 +1253,31 @@ export async function getTokenPrice(): Promise<{ price: number; priceInUsd: numb
     const priceData = await priceResponse.json();
     console.log('[getTokenPrice] Jupiter price data:', JSON.stringify(priceData, null, 2));
     
-    const solPriceData = priceData.data?.[SOL_MINT];
-    const tokenPriceData = priceData.data?.[TOKEN_MINT_ADDRESS];
+    // La réponse Jupiter a la structure directe { [mint]: { usdPrice, ... } }
+    const solPriceData = priceData[SOL_MINT];
+    const tokenPriceData = priceData[TOKEN_MINT_ADDRESS];
     
     if (!solPriceData || !tokenPriceData) {
       console.error('[getTokenPrice] Missing price data from Jupiter');
       // Fallback: calculer le prix depuis la LP
       if (tokenBalance > 0 && solBalanceInSol > 0) {
         const price = solBalanceInSol / tokenBalance;
+        // Essayer de récupérer le prix du SOL depuis CoinGecko comme fallback
+        let solPrice = 0;
+        try {
+          const solResponse = await fetch('https://api.coingecko.com/api/v3/simple/price?ids=solana&vs_currencies=usd');
+          if (solResponse.ok) {
+            const solData = await solResponse.json();
+            solPrice = solData.solana?.usd || 0;
+          }
+        } catch (err) {
+          console.error('[getTokenPrice] Error fetching SOL price from CoinGecko:', err);
+        }
+        
         return {
           price,
-          priceInUsd: 0,
-          solPrice: solPriceData?.price || 0,
+          priceInUsd: solPrice > 0 ? price * solPrice : 0,
+          solPrice,
           solBalance: solBalanceInSol,
           tokenBalance,
         };
@@ -1272,8 +1285,9 @@ export async function getTokenPrice(): Promise<{ price: number; priceInUsd: numb
       return null;
     }
     
-    const solPrice = solPriceData.price || 0;
-    const tokenPriceInUsd = tokenPriceData.price || 0;
+    // Jupiter API utilise "usdPrice" au lieu de "price"
+    const solPrice = solPriceData.usdPrice || 0;
+    const tokenPriceInUsd = tokenPriceData.usdPrice || 0;
     
     // Calculer le prix en SOL si on a les balances de la LP
     let priceInSol = 0;
