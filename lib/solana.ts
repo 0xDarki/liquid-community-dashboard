@@ -62,8 +62,13 @@ export async function getSolBalance(address: string): Promise<number> {
     const publicKey = new PublicKey(address);
     const balance = await connection.getBalance(publicKey);
     return balance / 1e9; // Convertir lamports en SOL
-  } catch (error) {
-    console.error('Error fetching SOL balance:', error);
+  } catch (error: any) {
+    // Gérer spécifiquement les erreurs 401 (Invalid API key)
+    if (error?.message?.includes('401') || error?.message?.includes('Invalid API key') || error?.message?.includes('Unauthorized')) {
+      console.error('Error fetching SOL balance: Invalid RPC API key. Please check your NEXT_PUBLIC_SOLANA_RPC_URL or SOLANA_RPC_URL environment variable.');
+    } else {
+      console.error('Error fetching SOL balance:', error);
+    }
     return 0;
   }
 }
@@ -662,6 +667,11 @@ export async function getMintTransactions(limit: number = 50): Promise<MintTrans
             consecutiveErrors = 0;
           } catch (error: any) {
             consecutiveErrors++;
+            // Gérer spécifiquement les erreurs 401 (Invalid API key)
+            if (error?.message?.includes('401') || error?.message?.includes('Invalid API key') || error?.message?.includes('Unauthorized')) {
+              console.error('Error fetching transactions: Invalid RPC API key. Please check your NEXT_PUBLIC_SOLANA_RPC_URL or SOLANA_RPC_URL environment variable.');
+              throw error; // Arrêter immédiatement si la clé API est invalide
+            }
             if (error?.message?.includes('429') || error?.message?.includes('Too Many Requests') ||
                 error?.message?.includes('503') || error?.message?.includes('Service Unavailable')) {
               if (consecutiveErrors >= maxConsecutiveErrors) {
@@ -692,6 +702,11 @@ export async function getMintTransactions(limit: number = 50): Promise<MintTrans
         }
       }
     } catch (error: any) {
+      // Gérer spécifiquement les erreurs 401 (Invalid API key)
+      if (error?.message?.includes('401') || error?.message?.includes('Invalid API key') || error?.message?.includes('Unauthorized')) {
+        console.error('Error fetching LP transactions: Invalid RPC API key. Please check your NEXT_PUBLIC_SOLANA_RPC_URL or SOLANA_RPC_URL environment variable.');
+        throw error;
+      }
       if (error?.message?.includes('503') || error?.message?.includes('Service Unavailable')) {
         console.warn('RPC returned 503 for LP transactions, skipping');
       } else if (!error?.message?.includes('RPC service unavailable')) {
@@ -774,6 +789,11 @@ export async function getMintTransactions(limit: number = 50): Promise<MintTrans
               consecutiveErrors = 0;
             } catch (error: any) {
               consecutiveErrors++;
+              // Gérer spécifiquement les erreurs 401 (Invalid API key)
+              if (error?.message?.includes('401') || error?.message?.includes('Invalid API key') || error?.message?.includes('Unauthorized')) {
+                console.error('Error fetching token mint transactions: Invalid RPC API key. Please check your NEXT_PUBLIC_SOLANA_RPC_URL or SOLANA_RPC_URL environment variable.');
+                throw error; // Arrêter immédiatement si la clé API est invalide
+              }
               if (error?.message?.includes('429') || error?.message?.includes('Too Many Requests') ||
                   error?.message?.includes('503') || error?.message?.includes('Service Unavailable')) {
                 if (consecutiveErrors >= maxConsecutiveErrors) {
@@ -804,6 +824,11 @@ export async function getMintTransactions(limit: number = 50): Promise<MintTrans
           }
         }
       } catch (error: any) {
+        // Gérer spécifiquement les erreurs 401 (Invalid API key)
+        if (error?.message?.includes('401') || error?.message?.includes('Invalid API key') || error?.message?.includes('Unauthorized')) {
+          console.error('Error fetching token mint transactions: Invalid RPC API key. Please check your NEXT_PUBLIC_SOLANA_RPC_URL or SOLANA_RPC_URL environment variable.');
+          throw error;
+        }
         if (error?.message?.includes('503') || error?.message?.includes('Service Unavailable')) {
           console.warn('RPC returned 503 for token mint transactions, skipping');
         } else {

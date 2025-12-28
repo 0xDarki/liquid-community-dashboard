@@ -18,12 +18,27 @@ interface SyncState {
 }
 
 // Détecter si on est sur Vercel (utilise Blob Storage) ou en local (utilise filesystem)
+// Sur Vercel, on ne peut pas écrire dans le filesystem, donc on utilise toujours Blob si le token est disponible
 const useBlobStorage = () => {
-  return !!process.env.BLOB_READ_WRITE_TOKEN && process.env.VERCEL === '1';
+  // Si BLOB_READ_WRITE_TOKEN existe, on est sur Vercel ou en local avec Blob configuré
+  // Sur Vercel, on ne peut pas créer de dossiers, donc on force Blob Storage
+  if (process.env.BLOB_READ_WRITE_TOKEN) {
+    // Si on est sur Vercel (VERCEL=1 ou VERCEL_ENV existe), on utilise toujours Blob
+    if (process.env.VERCEL === '1' || process.env.VERCEL_ENV) {
+      return true;
+    }
+    // En local, si le token existe, on peut utiliser Blob aussi
+    return true;
+  }
+  return false;
 };
 
-// S'assurer que le dossier data existe (pour le mode local)
+// S'assurer que le dossier data existe (pour le mode local uniquement)
 async function ensureDataDir() {
+  // Ne jamais essayer de créer le dossier sur Vercel
+  if (useBlobStorage()) {
+    return;
+  }
   try {
     await fs.mkdir(STORAGE_DIR, { recursive: true });
   } catch (error) {

@@ -56,7 +56,8 @@ Open [http://localhost:3000](http://localhost:3000) in your browser.
 2. Import your repository on [Vercel](https://vercel.com)
 
 3. Add environment variables in Vercel dashboard:
-   - `NEXT_PUBLIC_SOLANA_RPC_URL` - Your Solana RPC endpoint
+   - `NEXT_PUBLIC_SOLANA_RPC_URL` - Your Solana RPC endpoint (with valid API key)
+   - `BLOB_READ_WRITE_TOKEN` - Automatically added when you create a Blob store
 
 4. Deploy!
 
