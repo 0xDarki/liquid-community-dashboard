@@ -108,7 +108,19 @@ export default function Dashboard() {
       
       // Mettre à jour le lastSyncTime depuis le sync state partagé
       if (syncState && syncState.lastSync && syncState.lastSync > 0) {
-        setLastSyncTime(new Date(syncState.lastSync));
+        const timestamp = syncState.lastSync;
+        const now = Date.now();
+        
+        // Détecter si le timestamp est en secondes (10 chiffres) ou millisecondes (13 chiffres)
+        // Un timestamp en secondes Unix est généralement entre 1000000000 (2001) et 9999999999 (2286)
+        // Un timestamp en millisecondes est généralement > 1000000000000
+        if (timestamp < 1000000000000 && timestamp > 1000000000) {
+          // Timestamp en secondes (10 chiffres), convertir en millisecondes
+          setLastSyncTime(new Date(timestamp * 1000));
+        } else {
+          // Timestamp en millisecondes (13 chiffres), utiliser tel quel
+          setLastSyncTime(new Date(timestamp));
+        }
       } else {
         setLastSyncTime(null);
       }
@@ -208,7 +220,15 @@ export default function Dashboard() {
             }
             
             // Mettre à jour le lastSyncTime local
-            setLastSyncTime(new Date(syncState.lastSync));
+            const timestamp = syncState.lastSync;
+            // Détecter si le timestamp est en secondes (10 chiffres) ou millisecondes (13 chiffres)
+            if (timestamp < 1000000000000 && timestamp > 1000000000) {
+              // Timestamp en secondes (10 chiffres), convertir en millisecondes
+              setLastSyncTime(new Date(timestamp * 1000));
+            } else {
+              // Timestamp en millisecondes (13 chiffres), utiliser tel quel
+              setLastSyncTime(new Date(timestamp));
+            }
           } else {
             setTimeUntilNextSync(0);
             // Ne pas réinitialiser lastSyncTime si on a déjà une valeur valide
