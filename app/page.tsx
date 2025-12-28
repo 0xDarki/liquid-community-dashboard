@@ -13,6 +13,8 @@ export default function Dashboard() {
   const [lastUpdate, setLastUpdate] = useState<Date>(new Date());
   const [error, setError] = useState<string | null>(null);
   const [syncing, setSyncing] = useState(false);
+  const [lastSyncTime, setLastSyncTime] = useState<Date | null>(null);
+  const [timeUntilNextSync, setTimeUntilNextSync] = useState<number>(0);
 
   const fetchData = async () => {
     setLoading(true);
@@ -85,6 +87,26 @@ export default function Dashboard() {
     return () => clearInterval(interval);
   }, []);
 
+  // Mettre à jour le compte à rebours pour le bouton Sync All
+  useEffect(() => {
+    const updateCountdown = () => {
+      if (lastSyncTime) {
+        const now = new Date().getTime();
+        const lastSync = lastSyncTime.getTime();
+        const twoMinutes = 2 * 60 * 1000; // 2 minutes en millisecondes
+        const timeElapsed = now - lastSync;
+        const timeRemaining = Math.max(0, twoMinutes - timeElapsed);
+        setTimeUntilNextSync(timeRemaining);
+      } else {
+        setTimeUntilNextSync(0);
+      }
+    };
+
+    updateCountdown();
+    const interval = setInterval(updateCountdown, 1000); // Mettre à jour toutes les secondes
+    return () => clearInterval(interval);
+  }, [lastSyncTime]);
+
   if (loading && !stats) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 dark:from-gray-900 dark:to-gray-800 flex items-center justify-center">
@@ -126,6 +148,7 @@ export default function Dashboard() {
                     const data = await res.json();
                     if (res.ok && data.success) {
                       alert(`Sync successful: ${data.added} new transactions added. Total: ${data.total}`);
+                      setLastSyncTime(new Date()); // Mettre à jour le temps de dernière sync
                       fetchData();
                     } else {
                       alert(`Error: ${data.error || 'Sync failed'}`);
@@ -137,10 +160,15 @@ export default function Dashboard() {
                     setSyncing(false);
                   }
                 }}
-                disabled={syncing || loading}
+                disabled={syncing || loading || timeUntilNextSync > 0}
                 className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors text-sm font-medium"
+                title={timeUntilNextSync > 0 ? `Please wait ${Math.ceil(timeUntilNextSync / 1000)}s before syncing again` : ''}
               >
-                {syncing ? 'Syncing...' : 'Sync All'}
+                {syncing 
+                  ? 'Syncing...' 
+                  : timeUntilNextSync > 0 
+                    ? `Sync All (${Math.ceil(timeUntilNextSync / 1000)}s)`
+                    : 'Sync All'}
               </button>
             </div>
           </div>
