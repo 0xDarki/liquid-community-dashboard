@@ -229,7 +229,7 @@ export default function Dashboard() {
                     <StatsCard
                       title="Token Price"
                       value={priceInUsd != null && priceInUsd > 0 
-                        ? `$${priceInUsd.toFixed(8)}`
+                        ? `$${priceInUsd.toFixed(8)} $LIQUID`
                         : `${priceInSol.toFixed(8)} SOL`}
                       subtitle={priceInUsd != null && priceInUsd > 0
                         ? `${priceInSol.toFixed(8)} SOL ($${solPrice?.toFixed(2) || 'N/A'} SOL)`
@@ -246,7 +246,7 @@ export default function Dashboard() {
                     minimumFractionDigits: 2,
                     maximumFractionDigits: 2,
                   })}`}
-                  subtitle={`${stats.totalSolAdded.toFixed(4)} SOL × $${stats.solPrice?.toFixed(2) || '0'} + ${stats.totalTokensAdded.toLocaleString('en-US', { maximumFractionDigits: 2 })} tokens × $${stats.tokenPriceInUsd?.toFixed(8) || '0'}`}
+                  subtitle={`${stats.totalSolAdded.toFixed(4)} SOL × $${stats.solPrice?.toFixed(2) || '0'} + ${stats.totalTokensAdded.toLocaleString('en-US', { maximumFractionDigits: 2 })} $LIQUID × $${stats.tokenPriceInUsd?.toFixed(8) || '0'}`}
                 />
               )}
             </div>
