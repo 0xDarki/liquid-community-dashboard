@@ -296,7 +296,8 @@ export async function detectAndRemoveFailedTransactions(): Promise<{
     
     const failedSignatures: string[] = [];
     let checked = 0;
-    const batchSize = 10; // Vérifier par batch de 10 pour éviter trop de requêtes
+    const batchSize = 5; // Réduire à 5 pour éviter trop de requêtes simultanées
+    const MIN_DELAY = 200; // Augmenter le délai à 200ms entre chaque vérification
     
     // Vérifier les transactions par batch
     for (let i = 0; i < existingMints.length; i += batchSize) {
@@ -305,6 +306,11 @@ export async function detectAndRemoveFailedTransactions(): Promise<{
       // Vérifier chaque transaction du batch
       for (const mint of batch) {
         try {
+          // Délai avant chaque vérification pour respecter les limites RPC (10 req/s)
+          if (checked > 0) {
+            await new Promise(resolve => setTimeout(resolve, MIN_DELAY));
+          }
+          
           // Utiliser getSignatureStatus pour vérifier rapidement si la transaction a échoué
           const status = await connection.getSignatureStatus(mint.signature);
           
@@ -316,15 +322,29 @@ export async function detectAndRemoveFailedTransactions(): Promise<{
             console.log(`[detectAndRemoveFailedTransactions] Found failed transaction: ${mint.signature}`);
           }
           
-          // Délai entre les vérifications pour respecter les limites RPC
-          if (checked % 5 === 0) {
-            await new Promise(resolve => setTimeout(resolve, 150)); // 150ms delay
+          // Gérer les erreurs 429 avec un délai plus long
+          if (status === null && checked % 10 === 0) {
+            await new Promise(resolve => setTimeout(resolve, 1000)); // Pause de 1s tous les 10 checks
           }
-        } catch (error) {
+        } catch (error: any) {
           console.error(`[detectAndRemoveFailedTransactions] Error checking transaction ${mint.signature}:`, error);
-          // En cas d'erreur, considérer comme potentiellement échouée
+          
+          // Si erreur 429, attendre plus longtemps avant de continuer
+          if (error?.message?.includes('429') || error?.message?.includes('Too Many Requests')) {
+            console.log(`[detectAndRemoveFailedTransactions] Rate limited, waiting 5 seconds...`);
+            await new Promise(resolve => setTimeout(resolve, 5000));
+            // Ne pas ajouter à failedSignatures si c'est juste une erreur de rate limit
+            continue;
+          }
+          
+          // En cas d'erreur autre, considérer comme potentiellement échouée
           failedSignatures.push(mint.signature);
         }
+      }
+      
+      // Pause entre les batches pour éviter les 429
+      if (i + batchSize < existingMints.length) {
+        await new Promise(resolve => setTimeout(resolve, 500)); // 500ms entre les batches
       }
     }
     
