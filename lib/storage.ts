@@ -80,6 +80,7 @@ async function loadMintsFromBlob(): Promise<MintTransaction[]> {
     const blobInfo = await head(BLOB_MINTS_KEY).catch(() => null);
     if (!blobInfo) {
       // Le fichier n'existe pas encore, retourner un tableau vide
+      console.log('[loadMintsFromBlob] Blob not found, returning empty array');
       return [];
     }
     
@@ -87,15 +88,26 @@ async function loadMintsFromBlob(): Promise<MintTransaction[]> {
     const response = await fetch(blobInfo.url);
     if (!response.ok) {
       if (response.status === 404) {
+        console.log('[loadMintsFromBlob] Blob not found (404), returning empty array');
         return [];
       }
+      if (response.status === 403) {
+        console.warn('[loadMintsFromBlob] Blob access forbidden (403). This may indicate a permissions issue. Returning empty array.');
+        return [];
+      }
+      console.error(`[loadMintsFromBlob] Failed to fetch blob: ${response.status} ${response.statusText}`);
       throw new Error(`Failed to fetch blob: ${response.statusText}`);
     }
     
     const text = await response.text();
     return JSON.parse(text);
   } catch (error: any) {
-    if (error.name === 'BlobNotFoundError' || error.status === 404) {
+    if (error.name === 'BlobNotFoundError' || error.status === 404 || error.status === 403) {
+      return [];
+    }
+    // Ne pas logger les erreurs 403 comme des erreurs critiques, juste comme un warning
+    if (error.message?.includes('Forbidden') || error.message?.includes('403')) {
+      console.warn('[loadMintsFromBlob] Access forbidden, returning empty array');
       return [];
     }
     console.error('Error loading mints from blob:', error);
@@ -126,14 +138,21 @@ async function loadSyncStateFromBlob(): Promise<SyncState> {
   try {
     const blobInfo = await head(BLOB_SYNC_STATE_KEY).catch(() => null);
     if (!blobInfo) {
+      console.log('[loadSyncStateFromBlob] Blob not found, returning default state');
       return { lastSync: 0, isSyncing: false };
     }
     
     const response = await fetch(blobInfo.url);
     if (!response.ok) {
       if (response.status === 404) {
+        console.log('[loadSyncStateFromBlob] Blob not found (404), returning default state');
         return { lastSync: 0, isSyncing: false };
       }
+      if (response.status === 403) {
+        console.warn('[loadSyncStateFromBlob] Blob access forbidden (403). Returning default state.');
+        return { lastSync: 0, isSyncing: false };
+      }
+      console.error(`[loadSyncStateFromBlob] Failed to fetch blob: ${response.status} ${response.statusText}`);
       throw new Error(`Failed to fetch sync state: ${response.statusText}`);
     }
     
@@ -162,7 +181,12 @@ async function loadSyncStateFromBlob(): Promise<SyncState> {
     
     return state;
   } catch (error: any) {
-    if (error.name === 'BlobNotFoundError' || error.status === 404) {
+    if (error.name === 'BlobNotFoundError' || error.status === 404 || error.status === 403) {
+      return { lastSync: 0, isSyncing: false };
+    }
+    // Ne pas logger les erreurs 403 comme des erreurs critiques
+    if (error.message?.includes('Forbidden') || error.message?.includes('403')) {
+      console.warn('[loadSyncStateFromBlob] Access forbidden, returning default state');
       return { lastSync: 0, isSyncing: false };
     }
     console.error('Error loading sync state from blob:', error);
