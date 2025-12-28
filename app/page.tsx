@@ -205,6 +205,33 @@ export default function Dashboard() {
               >
                 {syncing ? 'Importing...' : 'Import from Blob'}
               </button>
+              <button
+                onClick={async () => {
+                  if (!confirm('Generate historical data points from mints.json? This will create points every 12h based on transaction timestamps.')) {
+                    return;
+                  }
+                  setSyncing(true);
+                  try {
+                    const res = await fetch('/api/history/generate', { method: 'POST' });
+                    const data = await res.json();
+                    if (res.ok && data.success) {
+                      alert(`History generation successful: ${data.generated} new points generated. Total: ${data.total}`);
+                      fetchData(); // Rafraîchir les données pour afficher les nouveaux graphiques
+                    } else {
+                      alert(`History generation failed: ${data.error || 'Unknown error'}`);
+                    }
+                  } catch (error: any) {
+                    alert(`History generation error: ${error.message}`);
+                  } finally {
+                    setSyncing(false);
+                  }
+                }}
+                disabled={syncing || loading}
+                className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors text-sm font-medium"
+                title="Generate historical data points from mints.json (every 12h)"
+              >
+                {syncing ? 'Generating...' : 'Generate History'}
+              </button>
             </div>
           </div>
           <div className="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
