@@ -577,8 +577,7 @@ function delay(ms: number): Promise<void> {
 // 10 req/s = 100ms entre requêtes minimum
 // Utiliser 120ms pour être sûr de rester en dessous même avec les retries automatiques
 // Augmenter le délai pour éviter les 429 (10 req/s = 100ms minimum, utiliser 150ms pour être sûr)
-const MIN_REQUEST_DELAY = 120; // 120ms donne ~8 req/s max, proche de 10 req/s pour maximiser la vitesse
-const PARALLEL_BATCH_SIZE = 5; // Traiter 5 transactions en parallèle pour 2x plus rapide
+const MIN_REQUEST_DELAY = 150; // 150ms donne ~6.7 req/s max, bien en dessous de 10 req/s pour éviter 429
 
 // Fonction pour obtenir les transactions MINT récentes
 export async function getMintTransactions(limit: number = 50, existingSignatures?: Set<string>): Promise<MintTransaction[]> {
@@ -650,15 +649,8 @@ export async function getMintTransactions(limit: number = 50, existingSignatures
         
         console.log(`[getMintTransactions] Processing ${signaturesToProcess.length} signatures (batch ${pageCount + 1})`);
         
-        // Filtrer d'abord les signatures à traiter
-        const signaturesToCheck = signaturesToProcess.filter(sigInfo => 
-          !EXCLUDED_TRANSACTIONS.includes(sigInfo.signature) && 
-          !seenSignatures.has(sigInfo.signature) &&
-          (!existingSignatures || !existingSignatures.has(sigInfo.signature))
-        );
-        
-        // Traiter en parallèle par batch pour accélérer
-        for (let i = 0; i < signaturesToCheck.length; i += PARALLEL_BATCH_SIZE) {
+        // Traiter séquentiellement pour éviter les 429 (mais optimisé)
+        for (const sigInfo of signaturesToProcess) {
           if (consecutiveErrors >= maxConsecutiveErrors) {
             console.warn('Too many consecutive errors, stopping transaction fetching');
             hasMore = false;
@@ -667,8 +659,12 @@ export async function getMintTransactions(limit: number = 50, existingSignatures
           
           const batch = signaturesToCheck.slice(i, i + PARALLEL_BATCH_SIZE);
           
-          // Traiter le batch en parallèle
-          const batchPromises = batch.map(async (sigInfo) => {
+          // Traiter le batch en parallèle avec délai progressif pour éviter les 429
+          const batchPromises = batch.map(async (sigInfo, index) => {
+            // Ajouter un délai progressif pour espacer les requêtes
+            if (index > 0) {
+              await delay(MIN_REQUEST_DELAY * index);
+            }
             try {
               // Vérifier le statut et récupérer la transaction en parallèle
               const [status, tx] = await Promise.all([
@@ -723,7 +719,7 @@ export async function getMintTransactions(limit: number = 50, existingSignatures
             
             // Délai entre les batches pour respecter les limites RPC
             if (i + PARALLEL_BATCH_SIZE < signaturesToCheck.length) {
-              await delay(MIN_REQUEST_DELAY);
+              await delay(MIN_REQUEST_DELAY * 2); // Double délai entre les batches
             }
           } catch (error: any) {
             consecutiveErrors++;
