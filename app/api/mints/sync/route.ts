@@ -18,8 +18,12 @@ export async function POST(request: Request) {
     // Charger l'état actuel
     const currentState = await loadSyncState();
     
-    // Marquer comme en cours de synchronisation
-    await saveSyncState({ ...currentState, isSyncing: true });
+    // Marquer comme en cours de synchronisation avec le timestamp de début
+    await saveSyncState({ 
+      ...currentState, 
+      isSyncing: true,
+      syncStartTime: Date.now(),
+    });
     
     try {
       const result = await syncMints(limit, getAll);
@@ -28,6 +32,7 @@ export async function POST(request: Request) {
       await saveSyncState({
         lastSync: Date.now(),
         isSyncing: false,
+        syncStartTime: undefined,
       });
       
       return NextResponse.json({ 
@@ -43,6 +48,7 @@ export async function POST(request: Request) {
       await saveSyncState({
         ...currentState,
         isSyncing: false,
+        syncStartTime: undefined,
       });
       throw error;
     }
@@ -68,8 +74,12 @@ export async function GET(request: Request) {
     // Charger l'état actuel
     const currentState = await loadSyncState();
     
-    // Marquer comme en cours de synchronisation
-    await saveSyncState({ ...currentState, isSyncing: true });
+    // Marquer comme en cours de synchronisation avec le timestamp de début
+    await saveSyncState({ 
+      ...currentState, 
+      isSyncing: true,
+      syncStartTime: Date.now(),
+    });
     
     try {
       const result = await syncMints(limit, getAll);
@@ -78,6 +88,7 @@ export async function GET(request: Request) {
       await saveSyncState({
         lastSync: Date.now(),
         isSyncing: false,
+        syncStartTime: undefined,
       });
       
       return NextResponse.json({ 
@@ -93,6 +104,7 @@ export async function GET(request: Request) {
       await saveSyncState({
         ...currentState,
         isSyncing: false,
+        syncStartTime: undefined,
       });
       throw error;
     }

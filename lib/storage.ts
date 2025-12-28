@@ -17,6 +17,7 @@ const BLOB_HISTORY_KEY = 'history.json';
 interface SyncState {
   lastSync: number; // Timestamp de la dernière synchronisation
   isSyncing: boolean; // Indique si une synchronisation est en cours
+  syncStartTime?: number; // Timestamp du début de la synchronisation (pour détecter les syncs bloqués)
 }
 
 // Interface pour le prix du token
@@ -137,7 +138,29 @@ async function loadSyncStateFromBlob(): Promise<SyncState> {
     }
     
     const text = await response.text();
-    return JSON.parse(text);
+    const state: SyncState = JSON.parse(text);
+    
+    // Vérifier si un sync est bloqué depuis trop longtemps (plus de 10 minutes)
+    // Si c'est le cas, le réinitialiser
+    if (state.isSyncing) {
+      const now = Date.now();
+      const syncStartTime = state.syncStartTime || state.lastSync || now;
+      const tenMinutes = 10 * 60 * 1000; // 10 minutes en millisecondes
+      
+      if (now - syncStartTime > tenMinutes) {
+        console.warn('[loadSyncStateFromBlob] Sync appears to be stuck, resetting isSyncing flag');
+        // Réinitialiser le flag isSyncing
+        const resetState: SyncState = {
+          lastSync: state.lastSync,
+          isSyncing: false,
+        };
+        // Sauvegarder l'état réinitialisé
+        await saveSyncStateToBlob(resetState);
+        return resetState;
+      }
+    }
+    
+    return state;
   } catch (error: any) {
     if (error.name === 'BlobNotFoundError' || error.status === 404) {
       return { lastSync: 0, isSyncing: false };
@@ -239,7 +262,28 @@ async function loadSyncStateFromFile(): Promise<SyncState> {
   try {
     await ensureDataDir();
     const data = await fs.readFile(SYNC_STATE_FILE, 'utf-8');
-    return JSON.parse(data);
+    const state: SyncState = JSON.parse(data);
+    
+    // Vérifier si un sync est bloqué depuis trop longtemps (plus de 10 minutes)
+    if (state.isSyncing) {
+      const now = Date.now();
+      const syncStartTime = state.syncStartTime || state.lastSync || now;
+      const tenMinutes = 10 * 60 * 1000; // 10 minutes en millisecondes
+      
+      if (now - syncStartTime > tenMinutes) {
+        console.warn('[loadSyncStateFromFile] Sync appears to be stuck, resetting isSyncing flag');
+        // Réinitialiser le flag isSyncing
+        const resetState: SyncState = {
+          lastSync: state.lastSync,
+          isSyncing: false,
+        };
+        // Sauvegarder l'état réinitialisé
+        await saveSyncStateToFile(resetState);
+        return resetState;
+      }
+    }
+    
+    return state;
   } catch (error: any) {
     if (error.code === 'ENOENT') {
       return { lastSync: 0, isSyncing: false };
