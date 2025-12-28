@@ -1,30 +1,53 @@
 import { NextResponse } from 'next/server';
-import { promises as fs } from 'fs';
-import path from 'path';
 import type { MintTransaction } from '@/lib/solana';
 import { loadStoredMints, saveStoredMints } from '@/lib/storage';
+import { head } from '@vercel/blob';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
+// Clé pour le fichier mints.json à importer depuis Vercel Blob Storage
+// Note: Si vous avez uploadé un fichier mints.json dans Vercel Blob Storage, 
+// il doit avoir le nom exact "mints.json" pour être importé
+const BLOB_IMPORT_MINTS_KEY = 'mints.json';
+
 export async function POST() {
   try {
-    // Chemin vers le fichier mints.json local
-    const mintsFilePath = path.join(process.cwd(), 'data', 'mints.json');
-    
-    // Lire le fichier local
-    let localMints: MintTransaction[] = [];
+    // Lire le fichier mints.json depuis Vercel Blob Storage
+    let importMints: MintTransaction[] = [];
     try {
-      const fileContent = await fs.readFile(mintsFilePath, 'utf-8');
-      localMints = JSON.parse(fileContent);
-      console.log(`[Import] Loaded ${localMints.length} transactions from local mints.json`);
-    } catch (error: any) {
-      if (error.code === 'ENOENT') {
+      // Vérifier si le blob existe
+      const blobInfo = await head(BLOB_IMPORT_MINTS_KEY).catch(() => null);
+      if (!blobInfo) {
         return NextResponse.json(
-          { error: 'File data/mints.json not found' },
+          { error: 'File mints.json not found in Vercel Blob Storage' },
           { status: 404 }
         );
       }
+      
+      // Récupérer le contenu via l'URL
+      const response = await fetch(blobInfo.url);
+      if (!response.ok) {
+        if (response.status === 404) {
+          return NextResponse.json(
+            { error: 'File mints.json not found in Vercel Blob Storage' },
+            { status: 404 }
+          );
+        }
+        throw new Error(`Failed to fetch blob: ${response.statusText}`);
+      }
+      
+      const text = await response.text();
+      importMints = JSON.parse(text);
+      console.log(`[Import] Loaded ${importMints.length} transactions from Vercel Blob Storage (mints.json)`);
+    } catch (error: any) {
+      if (error.name === 'BlobNotFoundError' || error.status === 404) {
+        return NextResponse.json(
+          { error: 'File mints.json not found in Vercel Blob Storage' },
+          { status: 404 }
+        );
+      }
+      console.error('[Import] Error loading from Blob Storage:', error);
       throw error;
     }
     
@@ -36,7 +59,7 @@ export async function POST() {
     const existingSignatures = new Set(existingMints.map(m => m.signature));
     
     // Filtrer les nouveaux mints (ceux qui ne sont pas déjà dans le stockage)
-    const newMints = localMints.filter(m => !existingSignatures.has(m.signature));
+    const newMints = importMints.filter(m => !existingSignatures.has(m.signature));
     
     console.log(`[Import] Found ${newMints.length} new transactions to add`);
     

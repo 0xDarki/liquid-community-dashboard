@@ -180,7 +180,7 @@ export default function Dashboard() {
               </button>
               <button
                 onClick={async () => {
-                  if (!confirm('Import transactions from data/mints.json? This will merge with existing data.')) {
+                  if (!confirm('Import transactions from mints.json in Vercel Blob Storage? This will merge with existing data.')) {
                     return;
                   }
                   setSyncing(true);
@@ -201,9 +201,9 @@ export default function Dashboard() {
                 }}
                 disabled={syncing || loading}
                 className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors text-sm font-medium"
-                title="Import transactions from data/mints.json file"
+                title="Import transactions from mints.json in Vercel Blob Storage"
               >
-                {syncing ? 'Importing...' : 'Import from mints.json'}
+                {syncing ? 'Importing...' : 'Import from Blob'}
               </button>
             </div>
           </div>
