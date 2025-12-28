@@ -111,8 +111,38 @@ export async function POST() {
                 }
               }
             } catch (error: any) {
-              // Ignorer les erreurs individuelles et continuer
-              if (error?.message?.includes('429') || error?.message?.includes('503')) {
+              const errorMessage = error?.message || '';
+              
+              // Vérifier si c'est une limite quotidienne atteinte
+              if (errorMessage.includes('daily request limit') || errorMessage.includes('daily limit reached') || errorMessage.includes('upgrade your account')) {
+                console.error(`[Recover] Daily RPC limit reached while processing signatures. Stopping recovery.`);
+                hasMore = false;
+                
+                // Sauvegarder ce qui a été récupéré jusqu'à présent
+                if (allNewTransactions.length > 0) {
+                  const updated = [...existingMints, ...allNewTransactions].sort((a, b) => b.timestamp - a.timestamp);
+                  await saveStoredMints(updated);
+                  console.log(`[Recover] Saved ${allNewTransactions.length} transactions recovered before hitting limit. Total: ${updated.length}`);
+                }
+                
+                // Réinitialiser le flag de sync
+                await saveSyncState({
+                  lastSync: Date.now(),
+                  isSyncing: false,
+                  syncStartTime: undefined,
+                });
+                
+                return NextResponse.json({
+                  success: false,
+                  added: allNewTransactions.length,
+                  total: existingMints.length + allNewTransactions.length,
+                  error: 'RPC_DAILY_LIMIT_REACHED',
+                  message: `Daily RPC request limit reached. Recovered ${allNewTransactions.length} new transactions before hitting the limit. Total stored: ${existingMints.length + allNewTransactions.length}. Please try again tomorrow or upgrade your RPC plan. You can also call this endpoint multiple times over several days to gradually recover all transactions.`,
+                }, { status: 429 });
+              }
+              
+              // Ignorer les erreurs temporaires et continuer
+              if (errorMessage.includes('429') || errorMessage.includes('503')) {
                 console.warn(`[Recover] Rate limited while processing signature, waiting 5 seconds...`);
                 await delay(5000);
               }
@@ -139,13 +169,44 @@ export async function POST() {
           }
         } catch (error: any) {
           console.error(`[Recover] Error fetching page ${pageCount + 1}:`, error);
-          // Si erreur 429 ou 503, attendre plus longtemps
-          if (error?.message?.includes('429') || error?.message?.includes('503') || error?.message?.includes('Rate limit')) {
+          const errorMessage = error?.message || '';
+          
+          // Vérifier si c'est une limite quotidienne atteinte (daily limit)
+          if (errorMessage.includes('daily request limit') || errorMessage.includes('daily limit reached') || errorMessage.includes('upgrade your account')) {
+            console.error(`[Recover] Daily RPC limit reached. Cannot continue recovery.`);
+            hasMore = false;
+            
+            // Sauvegarder ce qui a été récupéré jusqu'à présent
+            if (allNewTransactions.length > 0) {
+              const updated = [...existingMints, ...allNewTransactions].sort((a, b) => b.timestamp - a.timestamp);
+              await saveStoredMints(updated);
+              console.log(`[Recover] Saved ${allNewTransactions.length} transactions recovered before hitting limit. Total: ${updated.length}`);
+            }
+            
+            // Réinitialiser le flag de sync
+            await saveSyncState({
+              lastSync: Date.now(),
+              isSyncing: false,
+              syncStartTime: undefined,
+            });
+            
+            return NextResponse.json({
+              success: false,
+              added: allNewTransactions.length,
+              total: existingMints.length + allNewTransactions.length,
+              error: 'RPC_DAILY_LIMIT_REACHED',
+              message: `Daily RPC request limit reached. Recovered ${allNewTransactions.length} new transactions before hitting the limit. Total stored: ${existingMints.length + allNewTransactions.length}. Please try again tomorrow or upgrade your RPC plan. You can also call this endpoint multiple times over several days to gradually recover all transactions.`,
+            }, { status: 429 });
+          }
+          
+          // Si erreur 429 ou 503 temporaire, attendre plus longtemps
+          if (errorMessage.includes('429') || errorMessage.includes('503') || errorMessage.includes('Rate limit')) {
             console.warn(`[Recover] Rate limited, waiting 10 seconds before continuing...`);
             await delay(10000);
             pageCount++;
             continue;
           }
+          
           // Pour les autres erreurs, arrêter
           hasMore = false;
           break;
@@ -179,7 +240,7 @@ export async function POST() {
         added: result.added,
         total: result.total,
         message: result.added > 0
-          ? `Recovery successful: ${result.added} transactions recovered. Total: ${result.total}. Note: This process retrieves up to ~3000 transactions per call. You can call this endpoint again to continue recovering more transactions.`
+          ? `Recovery successful: ${result.added} transactions recovered. Total: ${result.total}. Note: This process can retrieve up to ~50,000 signatures per call. If you have more transactions, you can call this endpoint again to continue recovering more.`
           : `No new transactions found. Total stored: ${result.total}. If you expected more transactions, you may need to call this endpoint multiple times to recover all historical data.`,
       });
     } catch (error) {
