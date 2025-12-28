@@ -112,7 +112,7 @@ export default function ModernChart({ transactions }: ModernChartProps) {
 
   const xAxisInterval = getXAxisInterval();
 
-  // Calculer le statut du bot avec détection des périodes d'inactivité
+  // Calculer le statut du bot avec détection des périodes d'inactivité basée sur les heures
   const getBotStatus = () => {
     if (transactions.length === 0) {
       return { 
@@ -125,82 +125,114 @@ export default function ModernChart({ transactions }: ModernChartProps) {
     }
 
     const now = Math.floor(Date.now() / 1000);
+    const oneHourInSeconds = 60 * 60;
     const tenMinutesAgo = now - (10 * 60);
-    const tenMinutesInSeconds = 10 * 60;
     
-    // Trier les transactions par timestamp (plus ancien en premier pour analyser les gaps)
+    // Trier les transactions par timestamp (plus ancien en premier)
     const sortedTxs = [...transactions].sort((a, b) => a.timestamp - b.timestamp);
     const lastTransaction = sortedTxs[sortedTxs.length - 1];
     
-    // Vérifier si une transaction a eu lieu dans les 10 dernières minutes
-    const hasRecentTransaction = lastTransaction.timestamp >= tenMinutesAgo;
+    // Trouver la première et dernière heure avec des transactions
+    const firstTxHour = Math.floor(sortedTxs[0].timestamp / 3600);
+    const lastTxHour = Math.floor(lastTransaction.timestamp / 3600);
+    const currentHour = Math.floor(now / 3600);
     
-    // Détecter les périodes d'inactivité (gaps de plus de 10 minutes)
+    // Grouper les transactions par heure et marquer chaque heure comme active/inactive
+    const hourStatus = new Map<number, { active: boolean; txCount: number; start: number }>();
+    
+    // Parcourir toutes les heures de la première transaction à maintenant
+    for (let hour = firstTxHour; hour <= currentHour; hour++) {
+      const hourStart = hour * 3600;
+      const hourEnd = hourStart + 3600;
+      
+      // Compter les transactions dans cette heure
+      const hourTxs = sortedTxs.filter(tx => tx.timestamp >= hourStart && tx.timestamp < hourEnd);
+      const isActive = hourTxs.length >= 10;
+      
+      hourStatus.set(hour, {
+        active: isActive,
+        txCount: hourTxs.length,
+        start: hourStart
+      });
+    }
+    
+    // Détecter les périodes d'inactivité (heures inactives consécutives)
     const downtimePeriods: Array<{ start: number; end: number; duration: number }> = [];
-    for (let i = 0; i < sortedTxs.length - 1; i++) {
-      const currentTx = sortedTxs[i];
-      const nextTx = sortedTxs[i + 1];
-      const gap = nextTx.timestamp - currentTx.timestamp;
-      
-      if (gap > tenMinutesInSeconds) {
-        downtimePeriods.push({
-          start: currentTx.timestamp,
-          end: nextTx.timestamp,
-          duration: gap
-        });
-      }
-    }
+    let currentDowntimeStart: number | null = null;
     
-    // Vérifier s'il y a un gap actuel (depuis la dernière transaction)
-    if (!hasRecentTransaction) {
-      const gapSinceLastTx = now - lastTransaction.timestamp;
-      if (gapSinceLastTx > tenMinutesInSeconds) {
-        downtimePeriods.push({
-          start: lastTransaction.timestamp,
-          end: now,
-          duration: gapSinceLastTx
-        });
-      }
-    }
-    
-    // Calculer la durée de fonctionnement continu actuel
-    let uptimeDuration: number | null = null;
-    if (hasRecentTransaction) {
-      // Trouver le début de la période de fonctionnement actuelle
-      // (dernière période d'inactivité terminée ou première transaction)
-      let uptimeStart = sortedTxs[0].timestamp;
+    for (let hour = firstTxHour; hour <= currentHour; hour++) {
+      const status = hourStatus.get(hour);
+      if (!status) continue;
       
-      // Parcourir les périodes d'inactivité de la fin vers le début
-      // On cherche la dernière période d'inactivité qui s'est terminée (pas celle en cours)
-      for (let i = downtimePeriods.length - 1; i >= 0; i--) {
-        const downtime = downtimePeriods[i];
-        // Si la période d'inactivité se termine avant la dernière transaction (pas en cours)
-        // et qu'elle se termine après le début actuel, c'est le nouveau début de l'uptime
-        if (downtime.end < lastTransaction.timestamp && downtime.end > uptimeStart) {
-          uptimeStart = downtime.end;
+      if (!status.active) {
+        // Heure inactive - démarrer ou continuer une période de downtime
+        if (currentDowntimeStart === null) {
+          currentDowntimeStart = status.start;
+        }
+      } else {
+        // Heure active - terminer la période de downtime si elle existe
+        if (currentDowntimeStart !== null) {
+          const downtimeEnd = status.start;
+          downtimePeriods.push({
+            start: currentDowntimeStart,
+            end: downtimeEnd,
+            duration: downtimeEnd - currentDowntimeStart
+          });
+          currentDowntimeStart = null;
         }
       }
+    }
+    
+    // Si on est encore dans une période de downtime (heure actuelle inactive)
+    const currentHourStatus = hourStatus.get(currentHour);
+    if (currentDowntimeStart !== null && currentHourStatus && !currentHourStatus.active) {
+      downtimePeriods.push({
+        start: currentDowntimeStart,
+        end: now,
+        duration: now - currentDowntimeStart
+      });
+    }
+    
+    // Calculer la durée de fonctionnement continu (heures actives consécutives)
+    let uptimeDuration: number | null = null;
+    let uptimeStart: number | null = null;
+    
+    // Parcourir de la fin vers le début pour trouver le début de l'uptime actuel
+    for (let hour = currentHour; hour >= firstTxHour; hour--) {
+      const status = hourStatus.get(hour);
+      if (!status) continue;
       
-      // L'uptime commence à la fin de la dernière période d'inactivité terminée
-      // ou à la première transaction si aucune période d'inactivité
-      uptimeDuration = now - uptimeStart;
-      
-      // S'assurer que l'uptime n'est pas négatif
-      if (uptimeDuration < 0) {
-        uptimeDuration = now - lastTransaction.timestamp;
+      if (status.active) {
+        // Heure active - c'est le début de l'uptime
+        uptimeStart = status.start;
+      } else {
+        // Heure inactive - arrêter la recherche
+        break;
       }
     }
     
-    // Compter les transactions de la dernière heure complète
+    // Si on a trouvé un début d'uptime et que l'heure actuelle est active
+    if (uptimeStart !== null && currentHourStatus && currentHourStatus.active) {
+      uptimeDuration = now - uptimeStart;
+    } else if (uptimeStart !== null) {
+      // Si l'heure actuelle n'est pas encore marquée mais qu'on a un uptime, calculer jusqu'à la fin de la dernière heure active
+      const lastActiveHour = Math.floor((now - oneHourInSeconds) / 3600);
+      const lastActiveStatus = hourStatus.get(lastActiveHour);
+      if (lastActiveStatus && lastActiveStatus.active) {
+        uptimeDuration = (lastActiveHour + 1) * 3600 - uptimeStart;
+      }
+    }
+    
+    // Déterminer le statut actuel
     const lastCompleteHourStart = Math.floor(now / 3600) * 3600 - 3600;
     const lastCompleteHourEnd = Math.floor(now / 3600) * 3600;
     const lastHourTransactions = sortedTxs.filter(tx => {
       return tx.timestamp >= lastCompleteHourStart && tx.timestamp < lastCompleteHourEnd;
     });
     
-    // Si l'heure est en cours, vérifier les transactions de l'heure en cours
     const currentHourStart = Math.floor(now / 3600) * 3600;
     const currentHourTransactions = sortedTxs.filter(tx => tx.timestamp >= currentHourStart);
+    const hasRecentTransaction = lastTransaction.timestamp >= tenMinutesAgo;
     
     // Si > 10 transactions dans l'heure complète précédente → bot fonctionne
     if (lastHourTransactions.length >= 10) {
