@@ -277,7 +277,7 @@ export default function Dashboard() {
           <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-3">
             Important Addresses
           </h2>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
             <div>
               <span className="font-medium text-gray-700 dark:text-gray-300 block mb-1">LP Pool</span>
               <span className="font-mono text-primary-600 dark:text-primary-400 break-all">
@@ -288,12 +288,6 @@ export default function Dashboard() {
               <span className="font-medium text-gray-700 dark:text-gray-300 block mb-1">Token Mint</span>
               <span className="font-mono text-primary-600 dark:text-primary-400 break-all">
                 J2kvsjCVGmKYH5nqo9X7VJGH2jpmKkNdzAaYUfKspump
-              </span>
-            </div>
-            <div>
-              <span className="font-medium text-gray-700 dark:text-gray-300 block mb-1">Buyback</span>
-              <span className="font-mono text-primary-600 dark:text-primary-400 break-all">
-                1nc1nerator11111111111111111111111111111111
               </span>
             </div>
           </div>

@@ -118,7 +118,6 @@ The code automatically detects if it's running on Vercel (with `BLOB_READ_WRITE_
 The dashboard tracks transactions for:
 - **LP Pool**: `5DXmqgrTivkdwg43UMU1YSV5WAvVmgvjBxsVP1aLV4Dk`
 - **Token Mint**: `J2kvsjCVGmKYH5nqo9X7VJGH2jpmKkNdzAaYUfKspump`
-- **Buyback Address**: `1nc1nerator11111111111111111111111111111111`
 
 ## Scripts
 
