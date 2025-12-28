@@ -3,7 +3,6 @@
 import React, { useEffect, useState } from 'react';
 import StatsCard from '@/components/StatsCard';
 import TransactionTable from '@/components/TransactionTable';
-import StatsChart from '@/components/StatsChart';
 import ModernChart from '@/components/ModernChart';
 import type { MintTransaction, PoolStats } from '@/lib/solana';
 
@@ -240,7 +239,15 @@ export default function Dashboard() {
                       // Rafraîchir toutes les données pour qu'elles soient à jour
                       await fetchData();
                     } else {
-                      alert(`Error: ${data.error || 'Update failed'}`);
+                      // Gérer les erreurs 429 (Too Many Requests)
+                      if (res.status === 429) {
+                        const message = data.timeRemaining 
+                          ? `Please wait ${data.timeRemaining} seconds before updating again. ${data.error || ''}`
+                          : data.error || 'Please wait before updating again';
+                        alert(message);
+                      } else {
+                        alert(`Error: ${data.error || 'Update failed'}`);
+                      }
                     }
                   } catch (error) {
                     console.error('Error updating:', error);
@@ -376,44 +383,6 @@ export default function Dashboard() {
           </div>
         )}
 
-        {/* Historical Charts - Hidden for now */}
-        {false && history.length > 0 && (
-          <div className="mb-6">
-            <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-4">
-              Historical Statistics (12h intervals)
-            </h2>
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              <StatsChart
-                data={history}
-                title="Total SOL Added Over Time"
-                dataKey="totalSolAdded"
-                color="#3b82f6"
-                formatter={(value) => `${value.toFixed(4)} SOL`}
-              />
-              <StatsChart
-                data={history}
-                title="Total Tokens Added Over Time"
-                dataKey="totalTokensAdded"
-                color="#10b981"
-                formatter={(value) => value.toLocaleString('en-US', { maximumFractionDigits: 0 })}
-              />
-              <StatsChart
-                data={history}
-                title="Total Liquidity Over Time"
-                dataKey="totalLiquidity"
-                color="#8b5cf6"
-                formatter={(value) => `$${value.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
-              />
-              <StatsChart
-                data={history}
-                title="Token Price (USD) Over Time"
-                dataKey="tokenPriceInUsd"
-                color="#f59e0b"
-                formatter={(value) => `$${value.toFixed(8)}`}
-              />
-            </div>
-          </div>
-        )}
 
         {/* Transactions */}
         <div className="mb-6">

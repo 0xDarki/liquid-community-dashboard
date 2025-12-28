@@ -5,8 +5,51 @@ export const dynamic = 'force-dynamic'; // Force dynamic rendering
 export const revalidate = 0; // Disable static generation
 export const maxDuration = 300; // 5 minutes (maximum pour Vercel Pro/Enterprise)
 
+// Fonction pour vérifier si une sync peut être lancée
+async function canSync(): Promise<{ allowed: boolean; reason?: string; timeRemaining?: number }> {
+  const currentState = await loadSyncState();
+  const now = Date.now();
+  const twoMinutes = 2 * 60 * 1000; // 2 minutes en millisecondes
+  
+  // Vérifier si une sync est en cours
+  if (currentState.isSyncing) {
+    return {
+      allowed: false,
+      reason: 'A sync is already in progress',
+    };
+  }
+  
+  // Vérifier si une sync a été effectuée dans les 2 dernières minutes
+  if (currentState.lastSync > 0) {
+    const timeSinceLastSync = now - currentState.lastSync;
+    if (timeSinceLastSync < twoMinutes) {
+      const timeRemaining = Math.ceil((twoMinutes - timeSinceLastSync) / 1000); // en secondes
+      return {
+        allowed: false,
+        reason: `Please wait ${timeRemaining} seconds before syncing again. Last sync was ${Math.floor(timeSinceLastSync / 1000)} seconds ago.`,
+        timeRemaining,
+      };
+    }
+  }
+  
+  return { allowed: true };
+}
+
 export async function POST(request: Request) {
   try {
+    // Vérifier si une sync peut être lancée
+    const canSyncResult = await canSync();
+    if (!canSyncResult.allowed) {
+      return NextResponse.json(
+        { 
+          success: false,
+          error: canSyncResult.reason || 'Sync not allowed',
+          timeRemaining: canSyncResult.timeRemaining,
+        },
+        { status: 429 } // Too Many Requests
+      );
+    }
+    
     const { searchParams } = new URL(request.url);
     const limitParam = searchParams.get('limit');
     const getAll = searchParams.get('getAll') === 'true' || limitParam === '0';
@@ -63,6 +106,19 @@ export async function POST(request: Request) {
 
 export async function GET(request: Request) {
   try {
+    // Vérifier si une sync peut être lancée
+    const canSyncResult = await canSync();
+    if (!canSyncResult.allowed) {
+      return NextResponse.json(
+        { 
+          success: false,
+          error: canSyncResult.reason || 'Sync not allowed',
+          timeRemaining: canSyncResult.timeRemaining,
+        },
+        { status: 429 } // Too Many Requests
+      );
+    }
+    
     const { searchParams } = new URL(request.url);
     const limitParam = searchParams.get('limit');
     const getAll = searchParams.get('getAll') === 'true' || limitParam === '0';
