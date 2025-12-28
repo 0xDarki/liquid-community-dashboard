@@ -49,8 +49,10 @@ export async function GET() {
       cached.tokenPriceToken = tokenPrice?.tokenBalance ?? null;
       
       // Recalculer la liquidité totale avec les prix mis à jour
-      if (tokenPrice?.solPrice && tokenPrice?.priceInUsd && cached.solBalance && cached.tokenBalance) {
-        cached.totalLiquidity = (cached.solBalance * tokenPrice.solPrice) + (cached.tokenBalance * tokenPrice.priceInUsd);
+      // Utiliser Total SOL Added et Total Tokens Added
+      if (tokenPrice?.solPrice && tokenPrice?.priceInUsd && cached.totalSolAdded != null && cached.totalTokensAdded != null) {
+        cached.totalLiquidity = (cached.totalSolAdded * tokenPrice.solPrice) + (cached.totalTokensAdded * tokenPrice.priceInUsd);
+        console.log(`[Stats API] Recalculated total liquidity: ${cached.totalSolAdded} SOL × $${tokenPrice.solPrice} + ${cached.totalTokensAdded} tokens × $${tokenPrice.priceInUsd} = $${cached.totalLiquidity}`);
       }
       
       cache.set(cacheKey, cached, 120000);
@@ -83,12 +85,15 @@ export async function GET() {
     
     const totalTokensTransferred = transferTxs.reduce((sum, tx) => sum + tx.tokenAmount, 0);
     
-    // Calculer la liquidité totale : (SOL × prix SOL) + (tokens × prix token)
+    // Calculer la liquidité totale : (Total SOL Added × prix SOL) + (Total Tokens Added × prix token)
     let totalLiquidity: number | null = null;
     if (tokenPrice?.solPrice && tokenPrice?.priceInUsd) {
-      const solLiquidity = solBalance * tokenPrice.solPrice;
-      const tokenLiquidity = tokenBalance * tokenPrice.priceInUsd;
+      const solLiquidity = totalSolAdded * tokenPrice.solPrice;
+      const tokenLiquidity = totalTokensAdded * tokenPrice.priceInUsd;
       totalLiquidity = solLiquidity + tokenLiquidity;
+      console.log(`[Stats API] Calculated total liquidity: ${totalSolAdded} SOL × $${tokenPrice.solPrice} + ${totalTokensAdded} tokens × $${tokenPrice.priceInUsd} = $${totalLiquidity}`);
+    } else {
+      console.log(`[Stats API] Cannot calculate total liquidity: solPrice=${tokenPrice?.solPrice}, priceInUsd=${tokenPrice?.priceInUsd}`);
     }
     
     const stats = {
