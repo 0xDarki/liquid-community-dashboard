@@ -160,28 +160,28 @@ export default function Dashboard() {
                     const res = await fetch('/api/mints/sync?limit=60');
                     const data = await res.json();
                     if (res.ok && data.success) {
-                      alert(`Sync successful: ${data.added} new transactions added. Total: ${data.total}`);
                       setLastSyncTime(new Date()); // Mettre à jour le temps de dernière sync
-                      fetchData();
+                      // Rafraîchir toutes les données pour qu'elles soient à jour
+                      await fetchData();
                     } else {
-                      alert(`Error: ${data.error || 'Sync failed'}`);
+                      alert(`Error: ${data.error || 'Update failed'}`);
                     }
                   } catch (error) {
-                    console.error('Error syncing:', error);
-                    alert('Error during synchronization');
+                    console.error('Error updating:', error);
+                    alert('Error during update');
                   } finally {
                     setSyncing(false);
                   }
                 }}
                 disabled={syncing || loading || timeUntilNextSync > 0}
                 className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors text-sm font-medium"
-                title={timeUntilNextSync > 0 ? `Please wait ${Math.ceil(timeUntilNextSync / 1000)}s before syncing again` : 'Sync the last 60 transactions'}
+                title={timeUntilNextSync > 0 ? `Please wait ${Math.ceil(timeUntilNextSync / 1000)}s before updating again` : 'Update data from blockchain'}
               >
                 {syncing 
-                  ? 'Syncing...' 
+                  ? 'Updating...' 
                   : timeUntilNextSync > 0 
-                    ? `Sync All (${Math.ceil(timeUntilNextSync / 1000)}s)`
-                    : 'Sync All'}
+                    ? `Update (${Math.ceil(timeUntilNextSync / 1000)}s)`
+                    : 'Update'}
               </button>
             </div>
           </div>
