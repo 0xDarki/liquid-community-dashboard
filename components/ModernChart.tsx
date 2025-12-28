@@ -533,7 +533,7 @@ export default function ModernChart({ transactions }: ModernChartProps) {
       {/* Graphiques côte à côte */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
         {/* Graphique en aires - SOL et Tokens ajoutés */}
-        <div className="bg-white dark:bg-gray-800 rounded-xl shadow-lg p-3 border border-gray-200 dark:border-gray-700 flex flex-col">
+        <div className="bg-white dark:bg-gray-800 rounded-xl shadow-lg p-3 border border-gray-200 dark:border-gray-700">
         <div className="flex items-center justify-between mb-2">
           <h3 className="text-base font-semibold text-gray-900 dark:text-white">
             Liquidity Added Over Time (1h intervals)
@@ -542,9 +542,9 @@ export default function ModernChart({ transactions }: ModernChartProps) {
             {chartData.length} points
           </span>
         </div>
-        <div className="flex-1 flex items-center justify-center">
+        <div className="w-full">
         <ResponsiveContainer width="100%" height={260}>
-          <AreaChart data={chartData} margin={{ top: 5, right: 15, left: 5, bottom: 50 }}>
+          <AreaChart data={chartData} margin={{ top: 5, right: 15, left: 0, bottom: 50 }}>
             <defs>
               <linearGradient id="colorSol" x1="0" y1="0" x2="0" y2="1">
                 <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.8}/>
@@ -615,7 +615,7 @@ export default function ModernChart({ transactions }: ModernChartProps) {
         </div>
 
         {/* Graphique cumulatif */}
-        <div className="bg-white dark:bg-gray-800 rounded-xl shadow-lg p-3 border border-gray-200 dark:border-gray-700 flex flex-col">
+        <div className="bg-white dark:bg-gray-800 rounded-xl shadow-lg p-3 border border-gray-200 dark:border-gray-700">
         <div className="flex items-center justify-between mb-2">
           <h3 className="text-base font-semibold text-gray-900 dark:text-white">
             Cumulative Liquidity Over Time
@@ -624,9 +624,9 @@ export default function ModernChart({ transactions }: ModernChartProps) {
             {chartData.length} points
           </span>
         </div>
-        <div className="flex-1 flex items-center justify-center">
+        <div className="w-full">
         <ResponsiveContainer width="100%" height={260}>
-          <AreaChart data={chartData} margin={{ top: 5, right: 15, left: 5, bottom: 50 }}>
+          <AreaChart data={chartData} margin={{ top: 5, right: 15, left: 10, bottom: 50 }}>
             <defs>
               <linearGradient id="colorCumulativeSol" x1="0" y1="0" x2="0" y2="1">
                 <stop offset="5%" stopColor="#6366f1" stopOpacity={0.8}/>
@@ -658,7 +658,7 @@ export default function ModernChart({ transactions }: ModernChartProps) {
                 if (value >= 1) return `${value.toFixed(2)} SOL`;
                 return `${value.toFixed(4)} SOL`;
               }}
-              width={75}
+              width={90}
             />
             <YAxis 
               yAxisId="right"
