@@ -11,6 +11,7 @@ const SYNC_STATE_FILE = path.join(STORAGE_DIR, 'sync-state.json');
 const BLOB_MINTS_KEY = 'mints.json';
 const BLOB_SYNC_STATE_KEY = 'sync-state.json';
 const BLOB_PRICE_KEY = 'price.json';
+const BLOB_HISTORY_KEY = 'history.json';
 
 // Interface pour l'état de synchronisation
 interface SyncState {
@@ -26,6 +27,18 @@ export interface TokenPrice {
   solBalance: number; // Solde SOL de la LP
   tokenBalance: number; // Solde de tokens de la LP
   timestamp: number; // Timestamp de la dernière mise à jour
+}
+
+// Interface pour les données historiques
+export interface HistoricalDataPoint {
+  timestamp: number; // Timestamp du point de données
+  totalSolAdded: number;
+  totalTokensAdded: number;
+  totalMints: number;
+  tokenPrice: number | null;
+  tokenPriceInUsd: number | null;
+  solPrice: number | null;
+  totalLiquidity: number | null;
 }
 
 // Détecter si on est sur Vercel (utilise Blob Storage) ou en local (utilise filesystem)
@@ -608,5 +621,126 @@ export async function syncMints(limit: number = 50, getAll: boolean = false): Pr
     // En cas d'erreur, retourner au moins ce qui est stocké
     const existing = await loadStoredMints();
     return { added: 0, total: existing.length };
+  }
+}
+
+// ========== FONCTIONS POUR LES DONNÉES HISTORIQUES ==========
+
+const HISTORY_FILE = path.join(STORAGE_DIR, 'history.json');
+
+// Charger les données historiques depuis Vercel Blob
+async function loadHistoryFromBlob(): Promise<HistoricalDataPoint[]> {
+  try {
+    const blobInfo = await head(BLOB_HISTORY_KEY).catch(() => null);
+    if (!blobInfo) {
+      return [];
+    }
+    const response = await fetch(blobInfo.url);
+    if (!response.ok) {
+      if (response.status === 404) {
+        return [];
+      }
+      throw new Error(`Failed to fetch blob: ${response.statusText}`);
+    }
+    const text = await response.text();
+    return JSON.parse(text);
+  } catch (error: any) {
+    if (error.name === 'BlobNotFoundError' || error.status === 404) {
+      return [];
+    }
+    console.error('Error loading history from blob:', error);
+    return [];
+  }
+}
+
+// Sauvegarder les données historiques dans Vercel Blob
+async function saveHistoryToBlob(history: HistoricalDataPoint[]): Promise<void> {
+  try {
+    const content = JSON.stringify(history, null, 2);
+    await put(BLOB_HISTORY_KEY, content, {
+      access: 'public',
+      contentType: 'application/json',
+      addRandomSuffix: false,
+      allowOverwrite: true,
+    });
+  } catch (error) {
+    console.error('Error saving history to blob:', error);
+  }
+}
+
+// Charger les données historiques depuis le fichier local
+async function loadHistoryFromFile(): Promise<HistoricalDataPoint[]> {
+  try {
+    await ensureDataDir();
+    const data = await fs.readFile(HISTORY_FILE, 'utf-8');
+    return JSON.parse(data);
+  } catch (error: any) {
+    if (error.code === 'ENOENT') {
+      return [];
+    }
+    console.error('Error loading history from file:', error);
+    return [];
+  }
+}
+
+// Sauvegarder les données historiques dans le fichier local
+async function saveHistoryToFile(history: HistoricalDataPoint[]): Promise<void> {
+  try {
+    await ensureDataDir();
+    await fs.writeFile(HISTORY_FILE, JSON.stringify(history, null, 2), 'utf-8');
+  } catch (error) {
+    console.error('Error saving history to file:', error);
+  }
+}
+
+// Charger les données historiques (unifié Blob/File)
+export async function loadStoredHistory(): Promise<HistoricalDataPoint[]> {
+  if (useBlobStorage()) {
+    return loadHistoryFromBlob();
+  }
+  return loadHistoryFromFile();
+}
+
+// Sauvegarder les données historiques (unifié Blob/File)
+export async function saveStoredHistory(history: HistoricalDataPoint[]): Promise<void> {
+  if (useBlobStorage()) {
+    await saveHistoryToBlob(history);
+  } else {
+    await saveHistoryToFile(history);
+  }
+}
+
+// Ajouter un point de données historique (vérifie si 12h se sont écoulées depuis le dernier point)
+export async function addHistoricalDataPoint(data: Omit<HistoricalDataPoint, 'timestamp'>): Promise<void> {
+  try {
+    const history = await loadStoredHistory();
+    const now = Date.now();
+    const twelveHours = 12 * 60 * 60 * 1000; // 12 heures en millisecondes
+    
+    // Vérifier si le dernier point est plus ancien que 12h
+    const lastPoint = history[history.length - 1];
+    if (lastPoint && (now - lastPoint.timestamp) < twelveHours) {
+      console.log('[addHistoricalDataPoint] Less than 12h since last point, skipping');
+      return;
+    }
+    
+    // Ajouter le nouveau point
+    const newPoint: HistoricalDataPoint = {
+      ...data,
+      timestamp: now,
+    };
+    
+    history.push(newPoint);
+    
+    // Garder seulement les 30 derniers jours (60 points à 12h d'intervalle)
+    const maxPoints = 60;
+    if (history.length > maxPoints) {
+      history.splice(0, history.length - maxPoints);
+    }
+    
+    await saveStoredHistory(history);
+    console.log(`[addHistoricalDataPoint] Added new data point at ${new Date(now).toISOString()}`);
+  } catch (error) {
+    console.error('Error adding historical data point:', error);
   }
 }

@@ -114,6 +114,23 @@ export async function GET() {
     
     console.log('[Stats API] Stats with price:', { ...stats, tokenPrice: stats.tokenPrice });
     
+    // Ajouter un point de données historiques (vérifie automatiquement si 12h se sont écoulées)
+    try {
+      const { addHistoricalDataPoint } = await import('@/lib/storage');
+      await addHistoricalDataPoint({
+        totalSolAdded,
+        totalTokensAdded,
+        totalMints: storedMints.length,
+        tokenPrice: tokenPrice?.price ?? null,
+        tokenPriceInUsd: tokenPrice?.priceInUsd ?? null,
+        solPrice: tokenPrice?.solPrice ?? null,
+        totalLiquidity,
+      });
+    } catch (historyError) {
+      console.error('[Stats API] Error adding historical data point:', historyError);
+      // Ne pas faire échouer la requête si l'ajout historique échoue
+    }
+    
     // Mettre en cache pendant 2 minutes pour réduire les requêtes
     cache.set(cacheKey, stats, 120000);
     

@@ -3,12 +3,15 @@
 import React, { useEffect, useState } from 'react';
 import StatsCard from '@/components/StatsCard';
 import TransactionTable from '@/components/TransactionTable';
+import StatsChart from '@/components/StatsChart';
 import type { MintTransaction, TransferTransaction, PoolStats } from '@/lib/solana';
+import type { HistoricalDataPoint } from '@/lib/storage';
 
 export default function Dashboard() {
   const [stats, setStats] = useState<PoolStats | null>(null);
   const [mintTransactions, setMintTransactions] = useState<MintTransaction[]>([]);
   const [transferTransactions, setTransferTransactions] = useState<TransferTransaction[]>([]);
+  const [history, setHistory] = useState<HistoricalDataPoint[]>([]);
   const [loading, setLoading] = useState(true);
   const [lastUpdate, setLastUpdate] = useState<Date>(new Date());
   const [error, setError] = useState<string | null>(null);
@@ -25,10 +28,11 @@ export default function Dashboard() {
       // Récupérer toutes les transactions MINT stockées
       // Ne pas synchroniser automatiquement pour éviter trop de requêtes
       // La synchronisation peut être faite manuellement via /api/mints/sync
-      const [statsRes, mintsRes, transfersRes] = await Promise.all([
+      const [statsRes, mintsRes, transfersRes, historyRes] = await Promise.all([
         fetch('/api/stats'),
         fetch('/api/mints?limit=0'), // 0 = toutes les transactions stockées
         fetch('/api/transfers?limit=20'), // Réduit à 20 pour les transfers
+        fetch('/api/history'),
       ]);
 
       // Vérifier les erreurs de connexion
@@ -52,15 +56,17 @@ export default function Dashboard() {
         throw new Error(errorData.error || 'Failed to fetch data from API');
       }
 
-      const [poolStats, mints, transfers] = await Promise.all([
+      const [poolStats, mints, transfers, historyData] = await Promise.all([
         statsRes.json(),
         mintsRes.json(),
         transfersRes.json(),
+        historyRes.json().catch(() => []), // Si l'API history échoue, utiliser un tableau vide
       ]);
 
       setStats(poolStats);
       setMintTransactions(mints);
       setTransferTransactions(transfers);
+      setHistory(historyData);
       setLastUpdate(new Date());
     } catch (error) {
       console.error('Error fetching data:', error);
@@ -239,6 +245,45 @@ export default function Dashboard() {
                   subtitle={`${stats.totalSolAdded.toFixed(4)} SOL × $${stats.solPrice?.toFixed(2) || '0'} + ${stats.totalTokensAdded.toLocaleString('en-US', { maximumFractionDigits: 2 })} tokens × $${stats.tokenPriceInUsd?.toFixed(8) || '0'}`}
                 />
               )}
+            </div>
+          </div>
+        )}
+
+        {/* Historical Charts */}
+        {history.length > 0 && (
+          <div className="mb-6">
+            <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-4">
+              Historical Statistics (12h intervals)
+            </h2>
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              <StatsChart
+                data={history}
+                title="Total SOL Added Over Time"
+                dataKey="totalSolAdded"
+                color="#3b82f6"
+                formatter={(value) => `${value.toFixed(4)} SOL`}
+              />
+              <StatsChart
+                data={history}
+                title="Total Tokens Added Over Time"
+                dataKey="totalTokensAdded"
+                color="#10b981"
+                formatter={(value) => value.toLocaleString('en-US', { maximumFractionDigits: 0 })}
+              />
+              <StatsChart
+                data={history}
+                title="Total Liquidity Over Time"
+                dataKey="totalLiquidity"
+                color="#8b5cf6"
+                formatter={(value) => `$${value.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
+              />
+              <StatsChart
+                data={history}
+                title="Token Price (USD) Over Time"
+                dataKey="tokenPriceInUsd"
+                color="#f59e0b"
+                formatter={(value) => `$${value.toFixed(8)}`}
+              />
             </div>
           </div>
         )}
