@@ -232,6 +232,33 @@ export default function Dashboard() {
               >
                 {syncing ? 'Generating...' : 'Generate History'}
               </button>
+              <button
+                onClick={async () => {
+                  if (!confirm('Clear all historical data? This action cannot be undone.')) {
+                    return;
+                  }
+                  setSyncing(true);
+                  try {
+                    const res = await fetch('/api/history/clean', { method: 'POST' });
+                    const data = await res.json();
+                    if (res.ok && data.success) {
+                      alert('History cleared successfully');
+                      fetchData(); // Rafraîchir les données
+                    } else {
+                      alert(`Failed to clear history: ${data.error || 'Unknown error'}`);
+                    }
+                  } catch (error: any) {
+                    alert(`Error clearing history: ${error.message}`);
+                  } finally {
+                    setSyncing(false);
+                  }
+                }}
+                disabled={syncing || loading}
+                className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors text-sm font-medium"
+                title="Clear all historical data"
+              >
+                {syncing ? 'Clearing...' : 'Clean History'}
+              </button>
             </div>
           </div>
           <div className="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
