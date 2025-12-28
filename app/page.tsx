@@ -162,7 +162,25 @@ export default function Dashboard() {
 
   // Mettre à jour le compte à rebours pour le bouton Update en utilisant le sync state partagé
   useEffect(() => {
+    let lastFetchTime = 0;
+    const FETCH_INTERVAL = 10000; // 10 secondes entre chaque fetch pour éviter trop de requêtes
+    
     const updateCountdown = async () => {
+      const now = Date.now();
+      // Éviter de faire trop de requêtes en même temps
+      if (now - lastFetchTime < FETCH_INTERVAL) {
+        // Si moins de 10 secondes se sont écoulées, mettre à jour seulement le compte à rebours local
+        if (lastSyncTime) {
+          const timeElapsed = now - lastSyncTime.getTime();
+          const twoMinutes = 2 * 60 * 1000;
+          const timeRemaining = Math.max(0, twoMinutes - timeElapsed);
+          setTimeUntilNextSync(timeRemaining);
+        }
+        return;
+      }
+      
+      lastFetchTime = now;
+      
       try {
         // Récupérer le sync state partagé depuis le serveur
         const res = await fetch('/api/sync-state');
@@ -202,9 +220,10 @@ export default function Dashboard() {
     };
 
     updateCountdown();
-    const interval = setInterval(updateCountdown, 2000); // Mettre à jour toutes les 2 secondes pour plus de réactivité
+    // Mettre à jour toutes les 5 secondes (mais ne fetch que toutes les 10 secondes)
+    const interval = setInterval(updateCountdown, 5000);
     return () => clearInterval(interval);
-  }, []);
+  }, [lastSyncTime]);
 
   if (loading && !stats) {
     return (
@@ -238,6 +257,37 @@ export default function Dashboard() {
                 className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors text-sm font-medium"
               >
                 {loading ? 'Refreshing...' : 'Refresh'}
+              </button>
+              <button
+                onClick={async () => {
+                  if (!confirm('This will recover all transactions from the blockchain. This may take several minutes. Continue?')) {
+                    return;
+                  }
+                  setSyncing(true);
+                  try {
+                    const res = await fetch('/api/mints/recover', { method: 'POST' });
+                    const data = await res.json();
+                    if (res.ok && data.success) {
+                      alert(`Recovery successful: ${data.added} transactions recovered. Total: ${data.total}. ${data.message || ''}`);
+                      // Attendre un peu pour que le sync state soit bien sauvegardé
+                      await new Promise(resolve => setTimeout(resolve, 500));
+                      // Rafraîchir toutes les données
+                      await fetchData();
+                    } else {
+                      alert(`Error: ${data.error || 'Recovery failed'}`);
+                    }
+                  } catch (error) {
+                    console.error('Error recovering:', error);
+                    alert('Error during recovery');
+                  } finally {
+                    setSyncing(false);
+                  }
+                }}
+                disabled={syncing || loading}
+                className="px-4 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors text-sm font-medium"
+                title="Recover all transactions from blockchain (use if data was lost)"
+              >
+                {syncing ? 'Recovering...' : 'Recover All'}
               </button>
               <button
                 onClick={async () => {

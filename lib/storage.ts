@@ -204,6 +204,14 @@ async function saveSyncStateToBlob(state: SyncState): Promise<void> {
       addRandomSuffix: false,
       allowOverwrite: true,
     });
+    
+    // Invalider le cache du sync state
+    try {
+      const { cache } = await import('./cache');
+      cache.clear(); // Nettoyer tout le cache pour forcer le rechargement
+    } catch (cacheError) {
+      // Ignorer les erreurs de cache
+    }
   } catch (error) {
     console.error('Error saving sync state to blob:', error);
   }

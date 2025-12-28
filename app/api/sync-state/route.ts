@@ -1,11 +1,19 @@
 import { NextResponse } from 'next/server';
 import { loadSyncState, saveSyncState } from '@/lib/storage';
+import { cache } from '@/lib/cache';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
 export async function GET() {
   try {
+    // Utiliser le cache pour réduire les requêtes (5 secondes de cache)
+    const cacheKey = 'sync-state';
+    const cached = cache.get(cacheKey);
+    if (cached) {
+      return NextResponse.json(cached);
+    }
+    
     let syncState = await loadSyncState();
     const now = Date.now();
     const twoMinutes = 2 * 60 * 1000;
@@ -30,14 +38,19 @@ export async function GET() {
     // Retourner l'état sans le syncStartTime (pas nécessaire côté client)
     const { syncStartTime, ...stateToReturn } = syncState;
     // S'assurer que lastSync est toujours présent (même si 0)
-    return NextResponse.json({
+    const response = {
       lastSync: stateToReturn.lastSync || 0,
       isSyncing: stateToReturn.isSyncing || false,
       lastSyncDate: stateToReturn.lastSync > 0 ? new Date(stateToReturn.lastSync).toISOString() : null,
       timeSinceLastSync: timeSinceLastSync ? Math.floor(timeSinceLastSync / 1000) : null,
       canSyncNow,
       timeRemaining,
-    });
+    };
+    
+    // Mettre en cache pendant 5 secondes pour réduire les requêtes
+    cache.set(cacheKey, response, 5000);
+    
+    return NextResponse.json(response);
   } catch (error: any) {
     console.error('Error fetching sync state:', error);
     return NextResponse.json(
