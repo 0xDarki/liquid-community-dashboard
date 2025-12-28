@@ -112,6 +112,80 @@ export default function ModernChart({ transactions }: ModernChartProps) {
 
   const xAxisInterval = getXAxisInterval();
 
+  // Calculer le statut du bot
+  const getBotStatus = () => {
+    if (transactions.length === 0) {
+      return { status: 'unknown', message: 'No data available', color: 'gray' };
+    }
+
+    const now = Math.floor(Date.now() / 1000);
+    const tenMinutesAgo = now - (10 * 60);
+    const oneHourAgo = now - (60 * 60);
+    
+    // Trier les transactions par timestamp (plus récent en premier)
+    const sortedTxs = [...transactions].sort((a, b) => b.timestamp - a.timestamp);
+    const lastTransaction = sortedTxs[0];
+    
+    // Vérifier si une transaction a eu lieu dans les 10 dernières minutes
+    const hasRecentTransaction = lastTransaction.timestamp >= tenMinutesAgo;
+    
+    // Compter les transactions de la dernière heure complète
+    const lastHourTransactions = sortedTxs.filter(tx => {
+      const txTime = tx.timestamp;
+      // Heure complète précédente (pas l'heure en cours)
+      const lastCompleteHourStart = Math.floor(now / 3600) * 3600 - 3600;
+      const lastCompleteHourEnd = Math.floor(now / 3600) * 3600;
+      return txTime >= lastCompleteHourStart && txTime < lastCompleteHourEnd;
+    });
+    
+    // Si l'heure est en cours, vérifier les transactions de l'heure en cours
+    const currentHourStart = Math.floor(now / 3600) * 3600;
+    const currentHourTransactions = sortedTxs.filter(tx => tx.timestamp >= currentHourStart);
+    
+    // Si > 10 transactions dans l'heure complète précédente → bot fonctionne
+    if (lastHourTransactions.length >= 10) {
+      return {
+        status: 'operational',
+        message: `Bot operational (${lastHourTransactions.length} tx in last hour)`,
+        color: 'green',
+        txCount: lastHourTransactions.length
+      };
+    }
+    
+    // Si l'heure est en cours et qu'il y a eu une transaction dans les 10 dernières minutes → actif
+    if (hasRecentTransaction && currentHourTransactions.length > 0) {
+      const minutesSinceLastTx = Math.floor((now - lastTransaction.timestamp) / 60);
+      return {
+        status: 'active',
+        message: `Bot active (last tx ${minutesSinceLastTx} min ago, ${currentHourTransactions.length} tx this hour)`,
+        color: 'blue',
+        txCount: currentHourTransactions.length,
+        minutesAgo: minutesSinceLastTx
+      };
+    }
+    
+    // Si 10 minutes se sont passées sans transaction → inactif
+    if (!hasRecentTransaction) {
+      const minutesSinceLastTx = Math.floor((now - lastTransaction.timestamp) / 60);
+      return {
+        status: 'inactive',
+        message: `Bot inactive (no tx in last 10 min, last tx ${minutesSinceLastTx} min ago)`,
+        color: 'red',
+        minutesAgo: minutesSinceLastTx
+      };
+    }
+    
+    // Par défaut, considérer comme actif si des transactions récentes
+    return {
+      status: 'active',
+      message: `Bot active (${currentHourTransactions.length} tx this hour)`,
+      color: 'blue',
+      txCount: currentHourTransactions.length
+    };
+  };
+
+  const botStatus = getBotStatus();
+
   const CustomTooltip = ({ active, payload, label }: any) => {
     if (active && payload && payload.length) {
       return (
@@ -131,19 +205,19 @@ export default function ModernChart({ transactions }: ModernChartProps) {
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
       {/* Graphique en aires - SOL et Tokens ajoutés */}
-      <div className="bg-white dark:bg-gray-800 rounded-xl shadow-lg p-6 border border-gray-200 dark:border-gray-700">
-        <div className="flex items-center justify-between mb-4">
-          <h3 className="text-xl font-semibold text-gray-900 dark:text-white">
+      <div className="bg-white dark:bg-gray-800 rounded-xl shadow-lg p-4 border border-gray-200 dark:border-gray-700">
+        <div className="flex items-center justify-between mb-3">
+          <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
             Liquidity Added Over Time (1h intervals)
           </h3>
-          <span className="text-sm text-gray-500 dark:text-gray-400">
-            {chartData.length} data points
+          <span className="text-xs text-gray-500 dark:text-gray-400">
+            {chartData.length} points
           </span>
         </div>
-        <ResponsiveContainer width="100%" height={400}>
-          <AreaChart data={chartData} margin={{ top: 10, right: 30, left: 10, bottom: 80 }}>
+        <ResponsiveContainer width="100%" height={280}>
+          <AreaChart data={chartData} margin={{ top: 5, right: 20, left: 5, bottom: 60 }}>
             <defs>
               <linearGradient id="colorSol" x1="0" y1="0" x2="0" y2="1">
                 <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.8}/>
@@ -158,12 +232,12 @@ export default function ModernChart({ transactions }: ModernChartProps) {
             <XAxis 
               dataKey="date" 
               className="text-gray-600 dark:text-gray-400"
-              tick={{ fill: 'currentColor', fontSize: 11 }}
+              tick={{ fill: 'currentColor', fontSize: 10 }}
               angle={-45}
               textAnchor="end"
-              height={80}
+              height={60}
               interval={xAxisInterval}
-              minTickGap={10}
+              minTickGap={8}
             />
             <YAxis 
               yAxisId="left"
@@ -212,58 +286,58 @@ export default function ModernChart({ transactions }: ModernChartProps) {
         </ResponsiveContainer>
       </div>
 
-      {/* Graphique en barres - Nombre de transactions */}
-      <div className="bg-white dark:bg-gray-800 rounded-xl shadow-lg p-6 border border-gray-200 dark:border-gray-700">
-        <div className="flex items-center justify-between mb-4">
-          <h3 className="text-xl font-semibold text-gray-900 dark:text-white">
-            Transaction Count per 1h Interval
-          </h3>
-          <span className="text-sm text-gray-500 dark:text-gray-400">
-            {chartData.length} data points
-          </span>
+      {/* Indicateur de statut du bot */}
+      <div className="bg-white dark:bg-gray-800 rounded-xl shadow-lg p-4 border border-gray-200 dark:border-gray-700">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
+              Bot Status
+            </h3>
+            <div className={`flex items-center gap-2 px-3 py-1.5 rounded-full ${
+              botStatus.color === 'green' ? 'bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-300' :
+              botStatus.color === 'blue' ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-800 dark:text-blue-300' :
+              botStatus.color === 'red' ? 'bg-red-100 dark:bg-red-900/30 text-red-800 dark:text-red-300' :
+              'bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-300'
+            }`}>
+              <div className={`w-2 h-2 rounded-full ${
+                botStatus.color === 'green' ? 'bg-green-500' :
+                botStatus.color === 'blue' ? 'bg-blue-500 animate-pulse' :
+                botStatus.color === 'red' ? 'bg-red-500' :
+                'bg-gray-500'
+              }`}></div>
+              <span className="text-sm font-medium capitalize">{botStatus.status}</span>
+            </div>
+          </div>
+          <div className="text-right">
+            <p className="text-sm text-gray-600 dark:text-gray-400">
+              {botStatus.message}
+            </p>
+            {botStatus.txCount !== undefined && (
+              <p className="text-xs text-gray-500 dark:text-gray-500 mt-1">
+                {botStatus.txCount} transactions this hour
+              </p>
+            )}
+            {botStatus.minutesAgo !== undefined && (
+              <p className="text-xs text-gray-500 dark:text-gray-500 mt-1">
+                Last transaction: {botStatus.minutesAgo} min ago
+              </p>
+            )}
+          </div>
         </div>
-        <ResponsiveContainer width="100%" height={300}>
-          <BarChart data={chartData} margin={{ top: 10, right: 30, left: 10, bottom: 80 }}>
-            <CartesianGrid strokeDasharray="3 3" className="stroke-gray-300 dark:stroke-gray-700" />
-            <XAxis 
-              dataKey="date" 
-              className="text-gray-600 dark:text-gray-400"
-              tick={{ fill: 'currentColor', fontSize: 11 }}
-              angle={-45}
-              textAnchor="end"
-              height={80}
-              interval={xAxisInterval}
-              minTickGap={10}
-            />
-            <YAxis 
-              className="text-gray-600 dark:text-gray-400"
-              tick={{ fill: 'currentColor', fontSize: 12 }}
-              allowDecimals={false}
-            />
-            <Tooltip content={<CustomTooltip />} />
-            <Legend />
-            <Bar 
-              dataKey="transactionCount" 
-              name="Transactions"
-              fill="#8b5cf6"
-              radius={[8, 8, 0, 0]}
-            />
-          </BarChart>
-        </ResponsiveContainer>
       </div>
 
       {/* Graphique cumulatif */}
-      <div className="bg-white dark:bg-gray-800 rounded-xl shadow-lg p-6 border border-gray-200 dark:border-gray-700">
-        <div className="flex items-center justify-between mb-4">
-          <h3 className="text-xl font-semibold text-gray-900 dark:text-white">
+      <div className="bg-white dark:bg-gray-800 rounded-xl shadow-lg p-4 border border-gray-200 dark:border-gray-700">
+        <div className="flex items-center justify-between mb-3">
+          <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
             Cumulative Liquidity Over Time
           </h3>
-          <span className="text-sm text-gray-500 dark:text-gray-400">
-            {chartData.length} data points
+          <span className="text-xs text-gray-500 dark:text-gray-400">
+            {chartData.length} points
           </span>
         </div>
-        <ResponsiveContainer width="100%" height={400}>
-          <AreaChart data={chartData} margin={{ top: 10, right: 30, left: 10, bottom: 80 }}>
+        <ResponsiveContainer width="100%" height={280}>
+          <AreaChart data={chartData} margin={{ top: 5, right: 20, left: 5, bottom: 60 }}>
             <defs>
               <linearGradient id="colorCumulativeSol" x1="0" y1="0" x2="0" y2="1">
                 <stop offset="5%" stopColor="#6366f1" stopOpacity={0.8}/>
@@ -278,12 +352,12 @@ export default function ModernChart({ transactions }: ModernChartProps) {
             <XAxis 
               dataKey="date" 
               className="text-gray-600 dark:text-gray-400"
-              tick={{ fill: 'currentColor', fontSize: 11 }}
+              tick={{ fill: 'currentColor', fontSize: 10 }}
               angle={-45}
               textAnchor="end"
-              height={80}
+              height={60}
               interval={xAxisInterval}
-              minTickGap={10}
+              minTickGap={8}
             />
             <YAxis 
               yAxisId="left"
