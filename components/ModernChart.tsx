@@ -419,6 +419,13 @@ export default function ModernChart({ transactions }: ModernChartProps) {
                     </span>
                   </>
                 )}
+                {/* Nombre de transactions dans le badge */}
+                {botStatus.txCount !== undefined && (
+                  <>
+                    <span className="text-xs opacity-70">•</span>
+                    <span className="text-xs font-medium">{botStatus.txCount} tx</span>
+                  </>
+                )}
               </div>
             </div>
             <div className="text-right">
