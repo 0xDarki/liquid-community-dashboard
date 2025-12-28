@@ -163,9 +163,9 @@ export async function POST() {
             break;
           }
           
-          // Pause entre les pages pour éviter les rate limits
+          // Pause entre les pages pour éviter les rate limits (réduite avec RPC 15 req/s)
           if (hasMore && pageCount < maxPages) {
-            await delay(1000);
+            await delay(500); // Réduit à 500ms avec RPC 15 req/s
           }
         } catch (error: any) {
           console.error(`[Recover] Error fetching page ${pageCount + 1}:`, error);
