@@ -229,6 +229,16 @@ export default function Dashboard() {
                 }
                 return null;
               })()}
+              {stats.totalLiquidity != null && stats.totalLiquidity > 0 && (
+                <StatsCard
+                  title="Total Liquidity"
+                  value={`$${stats.totalLiquidity.toLocaleString('en-US', {
+                    minimumFractionDigits: 2,
+                    maximumFractionDigits: 2,
+                  })}`}
+                  subtitle={`${stats.solBalance.toFixed(4)} SOL × $${stats.solPrice?.toFixed(2) || '0'} + ${stats.tokenBalance.toLocaleString('en-US', { maximumFractionDigits: 2 })} tokens × $${stats.tokenPriceInUsd?.toFixed(8) || '0'}`}
+                />
+              )}
             </div>
           </div>
         )}

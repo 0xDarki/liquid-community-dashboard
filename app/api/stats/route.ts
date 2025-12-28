@@ -47,6 +47,12 @@ export async function GET() {
       cached.solPrice = tokenPrice?.solPrice ?? null;
       cached.tokenPriceSol = tokenPrice?.solBalance ?? null;
       cached.tokenPriceToken = tokenPrice?.tokenBalance ?? null;
+      
+      // Recalculer la liquidité totale avec les prix mis à jour
+      if (tokenPrice?.solPrice && tokenPrice?.priceInUsd && cached.solBalance && cached.tokenBalance) {
+        cached.totalLiquidity = (cached.solBalance * tokenPrice.solPrice) + (cached.tokenBalance * tokenPrice.priceInUsd);
+      }
+      
       cache.set(cacheKey, cached, 120000);
       console.log('[Stats API] Returning cached stats with updated price:', cached.tokenPrice);
       return NextResponse.json(cached);
@@ -77,6 +83,14 @@ export async function GET() {
     
     const totalTokensTransferred = transferTxs.reduce((sum, tx) => sum + tx.tokenAmount, 0);
     
+    // Calculer la liquidité totale : (SOL × prix SOL) + (tokens × prix token)
+    let totalLiquidity: number | null = null;
+    if (tokenPrice?.solPrice && tokenPrice?.priceInUsd) {
+      const solLiquidity = solBalance * tokenPrice.solPrice;
+      const tokenLiquidity = tokenBalance * tokenPrice.priceInUsd;
+      totalLiquidity = solLiquidity + tokenLiquidity;
+    }
+    
     const stats = {
       solBalance,
       tokenBalance,
@@ -90,6 +104,7 @@ export async function GET() {
       solPrice: tokenPrice?.solPrice ?? null,
       tokenPriceSol: tokenPrice?.solBalance ?? null,
       tokenPriceToken: tokenPrice?.tokenBalance ?? null,
+      totalLiquidity,
     };
     
     console.log('[Stats API] Stats with price:', { ...stats, tokenPrice: stats.tokenPrice });

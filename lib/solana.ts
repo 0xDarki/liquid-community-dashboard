@@ -61,6 +61,7 @@ export interface PoolStats {
   solPrice?: number | null;
   tokenPriceSol?: number | null;
   tokenPriceToken?: number | null;
+  totalLiquidity?: number | null; // Liquidité totale en USD
 }
 
 // Fonction pour obtenir le solde SOL d'une adresse
