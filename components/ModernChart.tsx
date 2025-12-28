@@ -112,30 +112,90 @@ export default function ModernChart({ transactions }: ModernChartProps) {
 
   const xAxisInterval = getXAxisInterval();
 
-  // Calculer le statut du bot
+  // Calculer le statut du bot avec détection des périodes d'inactivité
   const getBotStatus = () => {
     if (transactions.length === 0) {
-      return { status: 'unknown', message: 'No data available', color: 'gray' };
+      return { 
+        status: 'unknown', 
+        message: 'No data available', 
+        color: 'gray',
+        downtimePeriods: [],
+        uptimeDuration: null
+      };
     }
 
     const now = Math.floor(Date.now() / 1000);
     const tenMinutesAgo = now - (10 * 60);
-    const oneHourAgo = now - (60 * 60);
+    const tenMinutesInSeconds = 10 * 60;
     
-    // Trier les transactions par timestamp (plus récent en premier)
-    const sortedTxs = [...transactions].sort((a, b) => b.timestamp - a.timestamp);
-    const lastTransaction = sortedTxs[0];
+    // Trier les transactions par timestamp (plus ancien en premier pour analyser les gaps)
+    const sortedTxs = [...transactions].sort((a, b) => a.timestamp - b.timestamp);
+    const lastTransaction = sortedTxs[sortedTxs.length - 1];
     
     // Vérifier si une transaction a eu lieu dans les 10 dernières minutes
     const hasRecentTransaction = lastTransaction.timestamp >= tenMinutesAgo;
     
+    // Détecter les périodes d'inactivité (gaps de plus de 10 minutes)
+    const downtimePeriods: Array<{ start: number; end: number; duration: number }> = [];
+    for (let i = 0; i < sortedTxs.length - 1; i++) {
+      const currentTx = sortedTxs[i];
+      const nextTx = sortedTxs[i + 1];
+      const gap = nextTx.timestamp - currentTx.timestamp;
+      
+      if (gap > tenMinutesInSeconds) {
+        downtimePeriods.push({
+          start: currentTx.timestamp,
+          end: nextTx.timestamp,
+          duration: gap
+        });
+      }
+    }
+    
+    // Vérifier s'il y a un gap actuel (depuis la dernière transaction)
+    if (!hasRecentTransaction) {
+      const gapSinceLastTx = now - lastTransaction.timestamp;
+      if (gapSinceLastTx > tenMinutesInSeconds) {
+        downtimePeriods.push({
+          start: lastTransaction.timestamp,
+          end: now,
+          duration: gapSinceLastTx
+        });
+      }
+    }
+    
+    // Calculer la durée de fonctionnement continu actuel
+    let uptimeDuration: number | null = null;
+    if (hasRecentTransaction) {
+      // Trouver le début de la période de fonctionnement actuelle
+      // (dernière période d'inactivité terminée ou première transaction)
+      let uptimeStart = sortedTxs[0].timestamp;
+      
+      // Parcourir les périodes d'inactivité de la fin vers le début
+      // On cherche la dernière période d'inactivité qui s'est terminée (pas celle en cours)
+      for (let i = downtimePeriods.length - 1; i >= 0; i--) {
+        const downtime = downtimePeriods[i];
+        // Si la période d'inactivité se termine avant la dernière transaction (pas en cours)
+        // et qu'elle se termine après le début actuel, c'est le nouveau début de l'uptime
+        if (downtime.end < lastTransaction.timestamp && downtime.end > uptimeStart) {
+          uptimeStart = downtime.end;
+        }
+      }
+      
+      // L'uptime commence à la fin de la dernière période d'inactivité terminée
+      // ou à la première transaction si aucune période d'inactivité
+      uptimeDuration = now - uptimeStart;
+      
+      // S'assurer que l'uptime n'est pas négatif
+      if (uptimeDuration < 0) {
+        uptimeDuration = now - lastTransaction.timestamp;
+      }
+    }
+    
     // Compter les transactions de la dernière heure complète
+    const lastCompleteHourStart = Math.floor(now / 3600) * 3600 - 3600;
+    const lastCompleteHourEnd = Math.floor(now / 3600) * 3600;
     const lastHourTransactions = sortedTxs.filter(tx => {
-      const txTime = tx.timestamp;
-      // Heure complète précédente (pas l'heure en cours)
-      const lastCompleteHourStart = Math.floor(now / 3600) * 3600 - 3600;
-      const lastCompleteHourEnd = Math.floor(now / 3600) * 3600;
-      return txTime >= lastCompleteHourStart && txTime < lastCompleteHourEnd;
+      return tx.timestamp >= lastCompleteHourStart && tx.timestamp < lastCompleteHourEnd;
     });
     
     // Si l'heure est en cours, vérifier les transactions de l'heure en cours
@@ -148,7 +208,9 @@ export default function ModernChart({ transactions }: ModernChartProps) {
         status: 'operational',
         message: `Bot operational (${lastHourTransactions.length} tx in last hour)`,
         color: 'green',
-        txCount: lastHourTransactions.length
+        txCount: lastHourTransactions.length,
+        downtimePeriods: downtimePeriods.slice(-5), // Dernières 5 périodes d'inactivité
+        uptimeDuration
       };
     }
     
@@ -160,7 +222,9 @@ export default function ModernChart({ transactions }: ModernChartProps) {
         message: `Bot active (last tx ${minutesSinceLastTx} min ago, ${currentHourTransactions.length} tx this hour)`,
         color: 'blue',
         txCount: currentHourTransactions.length,
-        minutesAgo: minutesSinceLastTx
+        minutesAgo: minutesSinceLastTx,
+        downtimePeriods: downtimePeriods.slice(-5),
+        uptimeDuration
       };
     }
     
@@ -171,7 +235,9 @@ export default function ModernChart({ transactions }: ModernChartProps) {
         status: 'inactive',
         message: `Bot inactive (no tx in last 10 min, last tx ${minutesSinceLastTx} min ago)`,
         color: 'red',
-        minutesAgo: minutesSinceLastTx
+        minutesAgo: minutesSinceLastTx,
+        downtimePeriods: downtimePeriods.slice(-5),
+        uptimeDuration: null
       };
     }
     
@@ -180,7 +246,9 @@ export default function ModernChart({ transactions }: ModernChartProps) {
       status: 'active',
       message: `Bot active (${currentHourTransactions.length} tx this hour)`,
       color: 'blue',
-      txCount: currentHourTransactions.length
+      txCount: currentHourTransactions.length,
+      downtimePeriods: downtimePeriods.slice(-5),
+      uptimeDuration
     };
   };
 
@@ -288,41 +356,103 @@ export default function ModernChart({ transactions }: ModernChartProps) {
 
       {/* Indicateur de statut du bot */}
       <div className="bg-white dark:bg-gray-800 rounded-xl shadow-lg p-4 border border-gray-200 dark:border-gray-700">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
-              Bot Status
-            </h3>
-            <div className={`flex items-center gap-2 px-3 py-1.5 rounded-full ${
-              botStatus.color === 'green' ? 'bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-300' :
-              botStatus.color === 'blue' ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-800 dark:text-blue-300' :
-              botStatus.color === 'red' ? 'bg-red-100 dark:bg-red-900/30 text-red-800 dark:text-red-300' :
-              'bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-300'
-            }`}>
-              <div className={`w-2 h-2 rounded-full ${
-                botStatus.color === 'green' ? 'bg-green-500' :
-                botStatus.color === 'blue' ? 'bg-blue-500 animate-pulse' :
-                botStatus.color === 'red' ? 'bg-red-500' :
-                'bg-gray-500'
-              }`}></div>
-              <span className="text-sm font-medium capitalize">{botStatus.status}</span>
+        <div className="space-y-3">
+          {/* Statut actuel */}
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
+                Bot Status
+              </h3>
+              <div className={`flex items-center gap-2 px-3 py-1.5 rounded-full ${
+                botStatus.color === 'green' ? 'bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-300' :
+                botStatus.color === 'blue' ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-800 dark:text-blue-300' :
+                botStatus.color === 'red' ? 'bg-red-100 dark:bg-red-900/30 text-red-800 dark:text-red-300' :
+                'bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-300'
+              }`}>
+                <div className={`w-2 h-2 rounded-full ${
+                  botStatus.color === 'green' ? 'bg-green-500' :
+                  botStatus.color === 'blue' ? 'bg-blue-500 animate-pulse' :
+                  botStatus.color === 'red' ? 'bg-red-500' :
+                  'bg-gray-500'
+                }`}></div>
+                <span className="text-sm font-medium capitalize">{botStatus.status}</span>
+              </div>
+            </div>
+            <div className="text-right">
+              <p className="text-sm text-gray-600 dark:text-gray-400">
+                {botStatus.message}
+              </p>
+              {botStatus.txCount !== undefined && (
+                <p className="text-xs text-gray-500 dark:text-gray-500 mt-1">
+                  {botStatus.txCount} transactions this hour
+                </p>
+              )}
+              {botStatus.minutesAgo !== undefined && (
+                <p className="text-xs text-gray-500 dark:text-gray-500 mt-1">
+                  Last transaction: {botStatus.minutesAgo} min ago
+                </p>
+              )}
             </div>
           </div>
-          <div className="text-right">
-            <p className="text-sm text-gray-600 dark:text-gray-400">
-              {botStatus.message}
-            </p>
-            {botStatus.txCount !== undefined && (
-              <p className="text-xs text-gray-500 dark:text-gray-500 mt-1">
-                {botStatus.txCount} transactions this hour
-              </p>
-            )}
-            {botStatus.minutesAgo !== undefined && (
-              <p className="text-xs text-gray-500 dark:text-gray-500 mt-1">
-                Last transaction: {botStatus.minutesAgo} min ago
-              </p>
-            )}
-          </div>
+
+          {/* Durée de fonctionnement continu */}
+          {botStatus.uptimeDuration !== null && botStatus.uptimeDuration > 0 && (
+            <div className="flex items-center gap-2 pt-2 border-t border-gray-200 dark:border-gray-700">
+              <span className="text-xs font-medium text-gray-500 dark:text-gray-400">Uptime:</span>
+              <span className="text-sm font-semibold text-green-600 dark:text-green-400">
+                {(() => {
+                  const hours = Math.floor(botStatus.uptimeDuration / 3600);
+                  const minutes = Math.floor((botStatus.uptimeDuration % 3600) / 60);
+                  if (hours > 0) {
+                    return `${hours}h ${minutes}m`;
+                  }
+                  return `${minutes}m`;
+                })()}
+              </span>
+              <span className="text-xs text-gray-500 dark:text-gray-500">
+                (running continuously)
+              </span>
+            </div>
+          )}
+
+          {/* Périodes d'inactivité */}
+          {botStatus.downtimePeriods && botStatus.downtimePeriods.length > 0 && (
+            <div className="pt-2 border-t border-gray-200 dark:border-gray-700">
+              <div className="flex items-center gap-2 mb-2">
+                <span className="text-xs font-medium text-gray-500 dark:text-gray-400">
+                  Recent downtime periods:
+                </span>
+                <span className="text-xs text-red-600 dark:text-red-400 font-semibold">
+                  {botStatus.downtimePeriods.length}
+                </span>
+              </div>
+              <div className="space-y-1.5 max-h-32 overflow-y-auto">
+                {botStatus.downtimePeriods.map((downtime, index) => {
+                  const startDate = new Date(downtime.start * 1000);
+                  const endDate = new Date(downtime.end * 1000);
+                  const durationMinutes = Math.floor(downtime.duration / 60);
+                  const durationHours = Math.floor(durationMinutes / 60);
+                  const durationStr = durationHours > 0 
+                    ? `${durationHours}h ${durationMinutes % 60}m`
+                    : `${durationMinutes}m`;
+                  
+                  return (
+                    <div key={index} className="flex items-center justify-between text-xs bg-red-50 dark:bg-red-900/20 px-2 py-1.5 rounded">
+                      <div className="flex items-center gap-2">
+                        <span className="text-red-600 dark:text-red-400">●</span>
+                        <span className="text-gray-700 dark:text-gray-300">
+                          {format(startDate, 'MMM dd, HH:mm')} - {format(endDate, 'MMM dd, HH:mm')}
+                        </span>
+                      </div>
+                      <span className="text-red-700 dark:text-red-400 font-medium">
+                        {durationStr}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
         </div>
       </div>
 
