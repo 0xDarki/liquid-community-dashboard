@@ -260,37 +260,6 @@ export default function Dashboard() {
               </button>
               <button
                 onClick={async () => {
-                  if (!confirm('This will recover all transactions from the blockchain. This may take several minutes. Continue?')) {
-                    return;
-                  }
-                  setSyncing(true);
-                  try {
-                    const res = await fetch('/api/mints/recover', { method: 'POST' });
-                    const data = await res.json();
-                    if (res.ok && data.success) {
-                      alert(`Recovery successful: ${data.added} transactions recovered. Total: ${data.total}. ${data.message || ''}`);
-                      // Attendre un peu pour que le sync state soit bien sauvegardé
-                      await new Promise(resolve => setTimeout(resolve, 500));
-                      // Rafraîchir toutes les données
-                      await fetchData();
-                    } else {
-                      alert(`Error: ${data.error || 'Recovery failed'}`);
-                    }
-                  } catch (error) {
-                    console.error('Error recovering:', error);
-                    alert('Error during recovery');
-                  } finally {
-                    setSyncing(false);
-                  }
-                }}
-                disabled={syncing || loading}
-                className="px-4 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors text-sm font-medium"
-                title="Recover all transactions from blockchain (use if data was lost)"
-              >
-                {syncing ? 'Recovering...' : 'Recover All'}
-              </button>
-              <button
-                onClick={async () => {
                   setSyncing(true);
                   try {
                     const res = await fetch('/api/mints/sync?limit=60');
