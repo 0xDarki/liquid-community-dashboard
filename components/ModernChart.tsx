@@ -376,86 +376,6 @@ export default function ModernChart({ transactions }: ModernChartProps) {
 
   return (
     <div className="space-y-4">
-      {/* Graphique en aires - SOL et Tokens ajoutés */}
-      <div className="bg-white dark:bg-gray-800 rounded-xl shadow-lg p-4 border border-gray-200 dark:border-gray-700">
-        <div className="flex items-center justify-between mb-3">
-          <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
-            Liquidity Added Over Time (1h intervals)
-          </h3>
-          <span className="text-xs text-gray-500 dark:text-gray-400">
-            {chartData.length} points
-          </span>
-        </div>
-        <ResponsiveContainer width="100%" height={280}>
-          <AreaChart data={chartData} margin={{ top: 5, right: 20, left: 5, bottom: 60 }}>
-            <defs>
-              <linearGradient id="colorSol" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.8}/>
-                <stop offset="95%" stopColor="#3b82f6" stopOpacity={0.1}/>
-              </linearGradient>
-              <linearGradient id="colorTokens" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="5%" stopColor="#10b981" stopOpacity={0.8}/>
-                <stop offset="95%" stopColor="#10b981" stopOpacity={0.1}/>
-              </linearGradient>
-            </defs>
-            <CartesianGrid strokeDasharray="3 3" className="stroke-gray-300 dark:stroke-gray-700" />
-            <XAxis 
-              dataKey="date" 
-              className="text-gray-600 dark:text-gray-400"
-              tick={{ fill: 'currentColor', fontSize: 10 }}
-              angle={-45}
-              textAnchor="end"
-              height={60}
-              interval={xAxisInterval}
-              minTickGap={8}
-            />
-            <YAxis 
-              yAxisId="left"
-              className="text-gray-600 dark:text-gray-400"
-              tick={{ fill: 'currentColor', fontSize: 12 }}
-              tickFormatter={(value) => `${value.toFixed(2)} SOL`}
-              width={80}
-            />
-            <YAxis 
-              yAxisId="right"
-              orientation="right"
-              className="text-gray-600 dark:text-gray-400"
-              tick={{ fill: 'currentColor', fontSize: 12 }}
-              tickFormatter={(value) => {
-                if (value >= 1000000) return `${(value / 1000000).toFixed(1)}M`;
-                if (value >= 1000) return `${(value / 1000).toFixed(1)}K`;
-                return value.toFixed(0);
-              }}
-              width={80}
-            />
-            <Tooltip content={<CustomTooltip />} />
-            <Legend />
-            <Area
-              yAxisId="left"
-              type="monotone"
-              dataKey="solAdded"
-              name="SOL Added"
-              stroke="#3b82f6"
-              fillOpacity={1}
-              fill="url(#colorSol)"
-              strokeWidth={2}
-              connectNulls={false}
-            />
-            <Area
-              yAxisId="right"
-              type="monotone"
-              dataKey="tokensAdded"
-              name="Tokens Added"
-              stroke="#10b981"
-              fillOpacity={1}
-              fill="url(#colorTokens)"
-              strokeWidth={2}
-              connectNulls={false}
-            />
-          </AreaChart>
-        </ResponsiveContainer>
-      </div>
-
       {/* Indicateur de statut du bot */}
       <div className="bg-white dark:bg-gray-800 rounded-xl shadow-lg p-4 border border-gray-200 dark:border-gray-700">
         <div className="space-y-3">
@@ -561,6 +481,86 @@ export default function ModernChart({ transactions }: ModernChartProps) {
             </div>
           )}
         </div>
+      </div>
+
+      {/* Graphique en aires - SOL et Tokens ajoutés */}
+      <div className="bg-white dark:bg-gray-800 rounded-xl shadow-lg p-4 border border-gray-200 dark:border-gray-700">
+        <div className="flex items-center justify-between mb-3">
+          <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
+            Liquidity Added Over Time (1h intervals)
+          </h3>
+          <span className="text-xs text-gray-500 dark:text-gray-400">
+            {chartData.length} points
+          </span>
+        </div>
+        <ResponsiveContainer width="100%" height={280}>
+          <AreaChart data={chartData} margin={{ top: 5, right: 20, left: 5, bottom: 60 }}>
+            <defs>
+              <linearGradient id="colorSol" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.8}/>
+                <stop offset="95%" stopColor="#3b82f6" stopOpacity={0.1}/>
+              </linearGradient>
+              <linearGradient id="colorTokens" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="5%" stopColor="#10b981" stopOpacity={0.8}/>
+                <stop offset="95%" stopColor="#10b981" stopOpacity={0.1}/>
+              </linearGradient>
+            </defs>
+            <CartesianGrid strokeDasharray="3 3" className="stroke-gray-300 dark:stroke-gray-700" />
+            <XAxis 
+              dataKey="date" 
+              className="text-gray-600 dark:text-gray-400"
+              tick={{ fill: 'currentColor', fontSize: 10 }}
+              angle={-45}
+              textAnchor="end"
+              height={60}
+              interval={xAxisInterval}
+              minTickGap={8}
+            />
+            <YAxis 
+              yAxisId="left"
+              className="text-gray-600 dark:text-gray-400"
+              tick={{ fill: 'currentColor', fontSize: 12 }}
+              tickFormatter={(value) => `${value.toFixed(2)} SOL`}
+              width={80}
+            />
+            <YAxis 
+              yAxisId="right"
+              orientation="right"
+              className="text-gray-600 dark:text-gray-400"
+              tick={{ fill: 'currentColor', fontSize: 12 }}
+              tickFormatter={(value) => {
+                if (value >= 1000000) return `${(value / 1000000).toFixed(1)}M`;
+                if (value >= 1000) return `${(value / 1000).toFixed(1)}K`;
+                return value.toFixed(0);
+              }}
+              width={80}
+            />
+            <Tooltip content={<CustomTooltip />} />
+            <Legend />
+            <Area
+              yAxisId="left"
+              type="monotone"
+              dataKey="solAdded"
+              name="SOL Added"
+              stroke="#3b82f6"
+              fillOpacity={1}
+              fill="url(#colorSol)"
+              strokeWidth={2}
+              connectNulls={false}
+            />
+            <Area
+              yAxisId="right"
+              type="monotone"
+              dataKey="tokensAdded"
+              name="Tokens Added"
+              stroke="#10b981"
+              fillOpacity={1}
+              fill="url(#colorTokens)"
+              strokeWidth={2}
+              connectNulls={false}
+            />
+          </AreaChart>
+        </ResponsiveContainer>
       </div>
 
       {/* Graphique cumulatif */}
