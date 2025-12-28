@@ -292,11 +292,18 @@ export default function ModernChart({ transactions }: ModernChartProps) {
       uptimeDuration = now - uptimeStart;
     }
     
+    // Calculer le nombre total de transactions pendant toute la durée de l'uptime
+    let uptimeTxCount: number | undefined = undefined;
+    if (uptimeStart !== null && uptimeDuration !== null && uptimeDuration > 0) {
+      uptimeTxCount = sortedTxs.filter(tx => tx.timestamp >= uptimeStart && tx.timestamp <= now).length;
+    }
+    
     // Debug: vérifier que l'uptime est calculé
     if (process.env.NODE_ENV === 'development') {
       console.log('[BotStatus] Uptime calculation:', {
         uptimeDuration,
         uptimeStart,
+        uptimeTxCount,
         isCurrentlyActive,
         shouldIncludeCurrentHour,
         hasRecentTransaction,
@@ -310,7 +317,7 @@ export default function ModernChart({ transactions }: ModernChartProps) {
         status: 'operational',
         message: `Bot operational (${lastHourTransactions.length} tx in last hour)`,
         color: 'green',
-        txCount: lastHourTransactions.length,
+        txCount: uptimeTxCount, // Utiliser le nombre de transactions de l'uptime
         downtimePeriods: downtimePeriods.slice(-5), // Dernières 5 périodes d'inactivité
         uptimeDuration
       };
@@ -323,7 +330,7 @@ export default function ModernChart({ transactions }: ModernChartProps) {
         status: 'active',
         message: `Bot active (last tx ${minutesSinceLastTx} min ago, ${currentHourTransactions.length} tx this hour)`,
         color: 'blue',
-        txCount: currentHourTransactions.length,
+        txCount: uptimeTxCount, // Utiliser le nombre de transactions de l'uptime
         minutesAgo: minutesSinceLastTx,
         downtimePeriods: downtimePeriods.slice(-5),
         uptimeDuration
@@ -348,7 +355,7 @@ export default function ModernChart({ transactions }: ModernChartProps) {
       status: 'active',
       message: `Bot active (${currentHourTransactions.length} tx this hour)`,
       color: 'blue',
-      txCount: currentHourTransactions.length,
+      txCount: uptimeTxCount, // Utiliser le nombre de transactions de l'uptime
       downtimePeriods: downtimePeriods.slice(-5),
       uptimeDuration
     };
