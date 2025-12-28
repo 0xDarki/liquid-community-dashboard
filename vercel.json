@@ -8,7 +8,7 @@
     "app/api/mints/sync/route.ts": {
       "maxDuration": 300
     },
-    "app/api/mints/cleanup/route.ts": {
+    "app/api/mints/recover/route.ts": {
       "maxDuration": 300
     }
   }
