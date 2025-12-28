@@ -12,6 +12,7 @@ export default function Dashboard() {
   const [mintTransactions, setMintTransactions] = useState<MintTransaction[]>([]);
   const [transferTransactions, setTransferTransactions] = useState<TransferTransaction[]>([]);
   const [history, setHistory] = useState<HistoricalDataPoint[]>([]);
+  const [averageStats, setAverageStats] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [lastUpdate, setLastUpdate] = useState<Date>(new Date());
   const [error, setError] = useState<string | null>(null);
@@ -56,17 +57,19 @@ export default function Dashboard() {
         throw new Error(errorData.error || 'Failed to fetch data from API');
       }
 
-      const [poolStats, mints, transfers, historyData] = await Promise.all([
+      const [poolStats, mints, transfers, historyData, averageData] = await Promise.all([
         statsRes.json(),
         mintsRes.json(),
         transfersRes.json(),
         historyRes.json().catch(() => []), // Si l'API history échoue, utiliser un tableau vide
+        averageRes.json().catch(() => null), // Si l'API average échoue, utiliser null
       ]);
 
       setStats(poolStats);
       setMintTransactions(mints);
       setTransferTransactions(transfers);
       setHistory(historyData);
+      setAverageStats(averageData);
       setLastUpdate(new Date());
     } catch (error) {
       console.error('Error fetching data:', error);
@@ -245,6 +248,39 @@ export default function Dashboard() {
                   subtitle={`${stats.totalSolAdded.toFixed(4)} SOL × $${stats.solPrice?.toFixed(2) || '0'} + ${stats.totalTokensAdded.toLocaleString('en-US', { maximumFractionDigits: 2 })} tokens × $${stats.tokenPriceInUsd?.toFixed(8) || '0'}`}
                 />
               )}
+            </div>
+          </div>
+        )}
+
+        {/* Average Stats (Last 24h) */}
+        {averageStats && averageStats.success && (
+          <div className="mb-6">
+            <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-4">
+              Average Liquidity Addition (Last 24 Hours)
+            </h2>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+              <StatsCard
+                title="Average SOL/Hour"
+                value={`${averageStats.averageSolPerHour24h.toFixed(6)} SOL`}
+                subtitle={`Total: ${averageStats.totalSolAdded.toFixed(4)} SOL (${averageStats.totalTransactions} transactions)`}
+              />
+              <StatsCard
+                title="Average Tokens/Hour"
+                value={averageStats.averageTokensPerHour24h.toLocaleString('en-US', {
+                  maximumFractionDigits: 2,
+                })}
+                subtitle={`Total: ${averageStats.totalTokensAdded.toLocaleString('en-US', { maximumFractionDigits: 2 })} tokens`}
+              />
+              <StatsCard
+                title="Transactions (24h)"
+                value={averageStats.totalTransactions.toLocaleString('en-US')}
+                subtitle={`Over ${averageStats.hoursElapsed.toFixed(1)} hours`}
+              />
+              <StatsCard
+                title="Rate"
+                value={`${(averageStats.totalTransactions / 24).toFixed(2)}/hour`}
+                subtitle={`${averageStats.totalTransactions} transactions in 24h`}
+              />
             </div>
           </div>
         )}
