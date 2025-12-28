@@ -320,37 +320,59 @@ export default function Dashboard() {
 
   if (loading && !stats) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 dark:from-gray-900 dark:to-gray-800 flex items-center justify-center">
+      <div className="min-h-screen bg-gradient-to-br from-gray-50 via-white to-gray-50 dark:from-gray-900 dark:via-gray-800 dark:to-gray-900 flex items-center justify-center">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600 mx-auto mb-4"></div>
-          <p className="text-gray-600 dark:text-gray-400">Loading data...</p>
+          <div className="relative">
+            <div className="animate-spin rounded-full h-16 w-16 border-4 border-gray-200 dark:border-gray-700 border-t-blue-600 dark:border-t-blue-400 mx-auto mb-6"></div>
+            <div className="absolute inset-0 flex items-center justify-center">
+              <div className="w-8 h-8 bg-blue-600 dark:bg-blue-400 rounded-full animate-pulse"></div>
+            </div>
+          </div>
+          <p className="text-lg font-semibold text-gray-700 dark:text-gray-300 mt-4">Loading dashboard...</p>
+          <p className="text-sm text-gray-500 dark:text-gray-500 mt-2">Fetching data from Supabase</p>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 dark:from-gray-900 dark:to-gray-800">
-      <div className="container mx-auto px-4 py-6 max-w-7xl">
+    <div className="min-h-screen bg-gradient-to-br from-gray-50 via-white to-gray-50 dark:from-gray-900 dark:via-gray-800 dark:to-gray-900">
+      <div className="container mx-auto px-4 py-8 max-w-7xl">
         {/* Header */}
-        <div className="mb-6">
-          <div className="flex flex-col md:flex-row md:items-center md:justify-between mb-4">
-            <div>
-              <h1 className="text-3xl font-bold text-gray-900 dark:text-white mb-1">
-                Liquid Community Dashboard
-              </h1>
-              <p className="text-sm text-gray-600 dark:text-gray-400">
-                Liquidity additions tracking - each liquidity addition is followed by a burn. Tek built by @leyten. Dashboard built by @0xDarki.
-              </p>
-            </div>
-            <div className="mt-4 md:mt-0 flex items-center gap-3 flex-wrap">
-              <button
-                onClick={fetchData}
-                disabled={loading}
-                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors text-sm font-medium"
-              >
-                {loading ? 'Refreshing...' : 'Refresh'}
-              </button>
+        <div className="mb-8">
+          <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-xl p-6 border border-gray-200 dark:border-gray-700 mb-6">
+            <div className="flex flex-col md:flex-row md:items-center md:justify-between mb-4">
+              <div>
+                <h1 className="text-4xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 dark:from-blue-400 dark:to-purple-400 bg-clip-text text-transparent mb-2">
+                  Liquid Community Dashboard
+                </h1>
+                <p className="text-sm text-gray-600 dark:text-gray-400">
+                  Liquidity additions tracking - each liquidity addition is followed by a burn. Tek built by @leyten. Dashboard built by @0xDarki.
+                </p>
+              </div>
+              <div className="mt-4 md:mt-0 flex items-center gap-3 flex-wrap">
+                <button
+                  onClick={fetchData}
+                  disabled={loading}
+                  className="px-5 py-2.5 bg-gradient-to-r from-blue-500 to-blue-600 text-white rounded-xl hover:from-blue-600 hover:to-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 text-sm font-semibold shadow-lg hover:shadow-xl transform hover:scale-105 active:scale-95"
+                >
+                  {loading ? (
+                    <span className="flex items-center gap-2">
+                      <svg className="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                      </svg>
+                      Refreshing...
+                    </span>
+                  ) : (
+                    <span className="flex items-center gap-2">
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                      </svg>
+                      Refresh
+                    </span>
+                  )}
+                </button>
               {/* Debug: Afficher l'état d'autorisation (à retirer en production) */}
               {process.env.NODE_ENV === 'development' && (
                 <span className="text-xs text-gray-500 dark:text-gray-400 px-2 py-1 bg-gray-100 dark:bg-gray-800 rounded">
@@ -392,7 +414,7 @@ export default function Dashboard() {
                       }
                     }}
                     disabled={syncing || loading || isSyncInProgress || timeUntilNextSync > 0 || recovering}
-                    className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors text-sm font-medium"
+                    className="px-5 py-2.5 bg-gradient-to-r from-green-500 to-emerald-600 text-white rounded-xl hover:from-green-600 hover:to-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 text-sm font-semibold shadow-lg hover:shadow-xl transform hover:scale-105 active:scale-95"
                     title={
                       isSyncInProgress 
                         ? 'A sync is already in progress' 
@@ -401,11 +423,24 @@ export default function Dashboard() {
                           : 'Update data from blockchain'
                     }
                   >
-                    {syncing || isSyncInProgress
-                      ? 'Updating...' 
-                      : timeUntilNextSync > 0 
-                        ? `Update (${Math.ceil(timeUntilNextSync / 1000)}s)`
-                        : 'Update'}
+                    {syncing || isSyncInProgress ? (
+                      <span className="flex items-center gap-2">
+                        <svg className="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                        </svg>
+                        Updating...
+                      </span>
+                    ) : timeUntilNextSync > 0 ? (
+                      `Update (${Math.ceil(timeUntilNextSync / 1000)}s)`
+                    ) : (
+                      <span className="flex items-center gap-2">
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
+                        </svg>
+                        Update
+                      </span>
+                    )}
                   </button>
                   <button
                     onClick={async () => {
@@ -439,28 +474,52 @@ export default function Dashboard() {
                       }
                     }}
                     disabled={syncing || loading || recovering || isSyncInProgress}
-                    className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors text-sm font-medium"
+                    className="px-5 py-2.5 bg-gradient-to-r from-amber-500 to-orange-600 text-white rounded-xl hover:from-amber-600 hover:to-orange-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 text-sm font-semibold shadow-lg hover:shadow-xl transform hover:scale-105 active:scale-95"
                     title="Recover all transactions from blockchain and sync to Supabase"
                   >
-                    {recovering ? 'Recovering...' : 'Recover All'}
+                    {recovering ? (
+                      <span className="flex items-center gap-2">
+                        <svg className="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                        </svg>
+                        Recovering...
+                      </span>
+                    ) : (
+                      <span className="flex items-center gap-2">
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                        </svg>
+                        Recover All
+                      </span>
+                    )}
                   </button>
                 </>
               )}
             </div>
           </div>
-          <div className="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
-            <span>Last sync:</span>
-            <span className="font-medium">
+          <div className="flex items-center gap-3 px-4 py-2 bg-gray-50 dark:bg-gray-900/50 rounded-lg border border-gray-200 dark:border-gray-700">
+            <div className="flex items-center gap-2">
+              <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse"></div>
+              <span className="text-xs font-medium text-gray-600 dark:text-gray-400">Last sync:</span>
+            </div>
+            <span className="text-xs font-semibold text-gray-900 dark:text-white">
               {lastSyncTime 
                 ? `${lastSyncTime.toLocaleDateString('en-US')} ${lastSyncTime.toLocaleTimeString('en-US')}`
                 : 'Never'}
             </span>
           </div>
           {error && (
-            <div className="mt-4 p-4 bg-red-100 dark:bg-red-900 border border-red-400 dark:border-red-700 rounded-lg">
-              <p className="text-red-800 dark:text-red-200 text-sm">{error}</p>
+            <div className="mt-4 p-4 bg-gradient-to-r from-red-50 to-red-100 dark:from-red-900/30 dark:to-red-800/30 border border-red-300 dark:border-red-700 rounded-xl shadow-lg">
+              <div className="flex items-center gap-3">
+                <svg className="w-5 h-5 text-red-600 dark:text-red-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                <p className="text-red-800 dark:text-red-200 text-sm font-medium">{error}</p>
+              </div>
             </div>
           )}
+          </div>
         </div>
 
         {/* Stats Cards */}
@@ -513,11 +572,13 @@ export default function Dashboard() {
                 title="Liquidity Additions"
                 value={stats.totalMints.toLocaleString('en-US')}
                 subtitle="Total additions"
+                color="indigo"
               />
               <StatsCard
                 title="Total SOL Added"
                 value={`${stats.totalSolAdded.toFixed(4)} SOL`}
                 subtitle="Since the beginning"
+                color="blue"
               />
               <StatsCard
                 title="Total Tokens Added"
@@ -525,6 +586,7 @@ export default function Dashboard() {
                   maximumFractionDigits: 2,
                 })}
                 subtitle="Since the beginning"
+                color="green"
               />
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-2 gap-4">
@@ -550,6 +612,7 @@ export default function Dashboard() {
                       : priceInSol != null && priceInSol > 0
                         ? `${priceSol > 0 ? priceSol.toFixed(4) : '0'} SOL / ${priceToken > 0 ? priceToken.toLocaleString('en-US', { maximumFractionDigits: 2 }) : '0'} tokens`
                         : 'Fetching price data...'}
+                    color="purple"
                   />
                 );
               })()}
@@ -564,6 +627,7 @@ export default function Dashboard() {
                 subtitle={stats.totalLiquidity != null && stats.totalLiquidity > 0
                   ? `${stats.totalSolAdded.toFixed(4)} SOL × $${stats.solPrice?.toFixed(2) || '0'} + ${stats.totalTokensAdded.toLocaleString('en-US', { maximumFractionDigits: 2 })} $LIQUID × $${stats.tokenPriceInUsd?.toFixed(8) || '0'}`
                   : 'Calculating liquidity...'}
+                color="orange"
               />
             </div>
           </div>
@@ -579,39 +643,52 @@ export default function Dashboard() {
 
         {/* Transactions */}
         <div className="mb-6">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-xl font-semibold text-gray-900 dark:text-white">
-              Liquidity Addition Transactions
-            </h2>
-            <span className="text-sm text-gray-600 dark:text-gray-400">
-              {mintTransactions.length} transactions found
-            </span>
+          <div className="bg-white dark:bg-gray-800 rounded-xl shadow-lg p-5 border border-gray-200 dark:border-gray-700 mb-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-1">
+                  Liquidity Addition Transactions
+                </h2>
+                <p className="text-sm text-gray-600 dark:text-gray-400">
+                  All mint transactions from the liquidity pool
+                </p>
+              </div>
+              <div className="px-4 py-2 bg-indigo-50 dark:bg-indigo-900/20 rounded-lg border border-indigo-200 dark:border-indigo-800/30">
+                <span className="text-sm font-semibold text-indigo-700 dark:text-indigo-300">
+                  {mintTransactions.length} transactions
+                </span>
+              </div>
+            </div>
           </div>
           
           {/* Pagination Controls */}
           {mintTransactions.length > transactionsPerPage && (
-            <div className="flex items-center justify-between mb-4">
-              <div className="text-sm text-gray-600 dark:text-gray-400">
-                Showing {((currentPage - 1) * transactionsPerPage) + 1} to {Math.min(currentPage * transactionsPerPage, mintTransactions.length)} of {mintTransactions.length} transactions
-              </div>
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
-                  disabled={currentPage === 1}
-                  className="px-3 py-1 bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-300 dark:hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors text-sm"
-                >
-                  Previous
-                </button>
-                <span className="text-sm text-gray-600 dark:text-gray-400">
-                  Page {currentPage} of {Math.ceil(mintTransactions.length / transactionsPerPage)}
-                </span>
-                <button
-                  onClick={() => setCurrentPage(prev => Math.min(Math.ceil(mintTransactions.length / transactionsPerPage), prev + 1))}
-                  disabled={currentPage >= Math.ceil(mintTransactions.length / transactionsPerPage)}
-                  className="px-3 py-1 bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-300 dark:hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors text-sm"
-                >
-                  Next
-                </button>
+            <div className="bg-white dark:bg-gray-800 rounded-xl shadow-lg p-4 border border-gray-200 dark:border-gray-700 mb-4">
+              <div className="flex items-center justify-between">
+                <div className="text-sm text-gray-600 dark:text-gray-400">
+                  Showing <span className="font-semibold text-gray-900 dark:text-white">{((currentPage - 1) * transactionsPerPage) + 1}</span> to <span className="font-semibold text-gray-900 dark:text-white">{Math.min(currentPage * transactionsPerPage, mintTransactions.length)}</span> of <span className="font-semibold text-gray-900 dark:text-white">{mintTransactions.length}</span> transactions
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+                    disabled={currentPage === 1}
+                    className="px-4 py-2 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 text-sm font-medium shadow-sm hover:shadow-md"
+                  >
+                    Previous
+                  </button>
+                  <div className="px-4 py-2 bg-indigo-50 dark:bg-indigo-900/20 rounded-lg border border-indigo-200 dark:border-indigo-800/30">
+                    <span className="text-sm font-semibold text-indigo-700 dark:text-indigo-300">
+                      Page {currentPage} of {Math.ceil(mintTransactions.length / transactionsPerPage)}
+                    </span>
+                  </div>
+                  <button
+                    onClick={() => setCurrentPage(prev => Math.min(Math.ceil(mintTransactions.length / transactionsPerPage), prev + 1))}
+                    disabled={currentPage >= Math.ceil(mintTransactions.length / transactionsPerPage)}
+                    className="px-4 py-2 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 text-sm font-medium shadow-sm hover:shadow-md"
+                  >
+                    Next
+                  </button>
+                </div>
               </div>
             </div>
           )}
