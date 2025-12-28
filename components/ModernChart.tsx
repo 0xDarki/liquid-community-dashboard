@@ -52,6 +52,10 @@ export default function ModernChart({ transactions }: ModernChartProps) {
     // Trier les intervalles par timestamp
     const sortedIntervals = Array.from(groups.keys()).sort((a, b) => a - b);
 
+    // Déterminer le format de date basé sur le nombre d'intervalles
+    const totalIntervals = sortedIntervals.length;
+    const useCompactFormat = totalIntervals > 48;
+
     sortedIntervals.forEach(intervalStart => {
       const txsInInterval = groups.get(intervalStart)!;
       const solAdded = txsInInterval.reduce((sum, tx) => sum + tx.solAmount, 0);
@@ -60,9 +64,15 @@ export default function ModernChart({ transactions }: ModernChartProps) {
       cumulativeSol += solAdded;
       cumulativeTokens += tokensAdded;
 
+      // Format de date plus compact pour l'affichage si beaucoup de données
+      const date = new Date(intervalStart * 1000);
+      const dateStr = useCompactFormat
+        ? format(date, 'MM/dd HH:mm') // Format compact si beaucoup de données
+        : format(date, 'MMM dd, HH:mm'); // Format complet si peu de données
+
       dataPoints.push({
         timestamp: intervalStart,
-        date: format(new Date(intervalStart * 1000), 'MMM dd, HH:mm'),
+        date: dateStr,
         solAdded,
         tokensAdded,
         transactionCount: txsInInterval.length,
@@ -91,6 +101,17 @@ export default function ModernChart({ transactions }: ModernChartProps) {
     );
   }
 
+  // Calculer l'intervalle optimal pour l'axe X basé sur le nombre de points
+  const getXAxisInterval = () => {
+    const dataLength = chartData.length;
+    if (dataLength <= 24) return 0; // Afficher tous les points si <= 24 heures
+    if (dataLength <= 48) return 1; // Afficher 1 sur 2 si <= 48 heures
+    if (dataLength <= 168) return Math.floor(dataLength / 24); // Afficher environ 24 points pour une semaine
+    return Math.floor(dataLength / 30); // Afficher environ 30 points pour plus d'une semaine
+  };
+
+  const xAxisInterval = getXAxisInterval();
+
   const CustomTooltip = ({ active, payload, label }: any) => {
     if (active && payload && payload.length) {
       return (
@@ -113,11 +134,16 @@ export default function ModernChart({ transactions }: ModernChartProps) {
     <div className="space-y-6">
       {/* Graphique en aires - SOL et Tokens ajoutés */}
       <div className="bg-white dark:bg-gray-800 rounded-xl shadow-lg p-6 border border-gray-200 dark:border-gray-700">
-        <h3 className="text-xl font-semibold text-gray-900 dark:text-white mb-6">
-          Liquidity Added Over Time (1h intervals)
-        </h3>
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-xl font-semibold text-gray-900 dark:text-white">
+            Liquidity Added Over Time (1h intervals)
+          </h3>
+          <span className="text-sm text-gray-500 dark:text-gray-400">
+            {chartData.length} data points
+          </span>
+        </div>
         <ResponsiveContainer width="100%" height={400}>
-          <AreaChart data={chartData} margin={{ top: 10, right: 30, left: 0, bottom: 0 }}>
+          <AreaChart data={chartData} margin={{ top: 10, right: 30, left: 10, bottom: 80 }}>
             <defs>
               <linearGradient id="colorSol" x1="0" y1="0" x2="0" y2="1">
                 <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.8}/>
@@ -132,23 +158,31 @@ export default function ModernChart({ transactions }: ModernChartProps) {
             <XAxis 
               dataKey="date" 
               className="text-gray-600 dark:text-gray-400"
-              tick={{ fill: 'currentColor', fontSize: 12 }}
+              tick={{ fill: 'currentColor', fontSize: 11 }}
               angle={-45}
               textAnchor="end"
               height={80}
+              interval={xAxisInterval}
+              minTickGap={10}
             />
             <YAxis 
               yAxisId="left"
               className="text-gray-600 dark:text-gray-400"
-              tick={{ fill: 'currentColor' }}
+              tick={{ fill: 'currentColor', fontSize: 12 }}
               tickFormatter={(value) => `${value.toFixed(2)} SOL`}
+              width={80}
             />
             <YAxis 
               yAxisId="right"
               orientation="right"
               className="text-gray-600 dark:text-gray-400"
-              tick={{ fill: 'currentColor' }}
-              tickFormatter={(value) => `${(value / 1000).toFixed(0)}K`}
+              tick={{ fill: 'currentColor', fontSize: 12 }}
+              tickFormatter={(value) => {
+                if (value >= 1000000) return `${(value / 1000000).toFixed(1)}M`;
+                if (value >= 1000) return `${(value / 1000).toFixed(1)}K`;
+                return value.toFixed(0);
+              }}
+              width={80}
             />
             <Tooltip content={<CustomTooltip />} />
             <Legend />
@@ -161,6 +195,7 @@ export default function ModernChart({ transactions }: ModernChartProps) {
               fillOpacity={1}
               fill="url(#colorSol)"
               strokeWidth={2}
+              connectNulls={false}
             />
             <Area
               yAxisId="right"
@@ -171,6 +206,7 @@ export default function ModernChart({ transactions }: ModernChartProps) {
               fillOpacity={1}
               fill="url(#colorTokens)"
               strokeWidth={2}
+              connectNulls={false}
             />
           </AreaChart>
         </ResponsiveContainer>
@@ -178,23 +214,31 @@ export default function ModernChart({ transactions }: ModernChartProps) {
 
       {/* Graphique en barres - Nombre de transactions */}
       <div className="bg-white dark:bg-gray-800 rounded-xl shadow-lg p-6 border border-gray-200 dark:border-gray-700">
-        <h3 className="text-xl font-semibold text-gray-900 dark:text-white mb-6">
-          Transaction Count per 1h Interval
-        </h3>
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-xl font-semibold text-gray-900 dark:text-white">
+            Transaction Count per 1h Interval
+          </h3>
+          <span className="text-sm text-gray-500 dark:text-gray-400">
+            {chartData.length} data points
+          </span>
+        </div>
         <ResponsiveContainer width="100%" height={300}>
-          <BarChart data={chartData} margin={{ top: 10, right: 30, left: 0, bottom: 0 }}>
+          <BarChart data={chartData} margin={{ top: 10, right: 30, left: 10, bottom: 80 }}>
             <CartesianGrid strokeDasharray="3 3" className="stroke-gray-300 dark:stroke-gray-700" />
             <XAxis 
               dataKey="date" 
               className="text-gray-600 dark:text-gray-400"
-              tick={{ fill: 'currentColor', fontSize: 12 }}
+              tick={{ fill: 'currentColor', fontSize: 11 }}
               angle={-45}
               textAnchor="end"
               height={80}
+              interval={xAxisInterval}
+              minTickGap={10}
             />
             <YAxis 
               className="text-gray-600 dark:text-gray-400"
-              tick={{ fill: 'currentColor' }}
+              tick={{ fill: 'currentColor', fontSize: 12 }}
+              allowDecimals={false}
             />
             <Tooltip content={<CustomTooltip />} />
             <Legend />
@@ -210,11 +254,16 @@ export default function ModernChart({ transactions }: ModernChartProps) {
 
       {/* Graphique cumulatif */}
       <div className="bg-white dark:bg-gray-800 rounded-xl shadow-lg p-6 border border-gray-200 dark:border-gray-700">
-        <h3 className="text-xl font-semibold text-gray-900 dark:text-white mb-6">
-          Cumulative Liquidity Over Time
-        </h3>
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-xl font-semibold text-gray-900 dark:text-white">
+            Cumulative Liquidity Over Time
+          </h3>
+          <span className="text-sm text-gray-500 dark:text-gray-400">
+            {chartData.length} data points
+          </span>
+        </div>
         <ResponsiveContainer width="100%" height={400}>
-          <AreaChart data={chartData} margin={{ top: 10, right: 30, left: 0, bottom: 0 }}>
+          <AreaChart data={chartData} margin={{ top: 10, right: 30, left: 10, bottom: 80 }}>
             <defs>
               <linearGradient id="colorCumulativeSol" x1="0" y1="0" x2="0" y2="1">
                 <stop offset="5%" stopColor="#6366f1" stopOpacity={0.8}/>
@@ -229,23 +278,31 @@ export default function ModernChart({ transactions }: ModernChartProps) {
             <XAxis 
               dataKey="date" 
               className="text-gray-600 dark:text-gray-400"
-              tick={{ fill: 'currentColor', fontSize: 12 }}
+              tick={{ fill: 'currentColor', fontSize: 11 }}
               angle={-45}
               textAnchor="end"
               height={80}
+              interval={xAxisInterval}
+              minTickGap={10}
             />
             <YAxis 
               yAxisId="left"
               className="text-gray-600 dark:text-gray-400"
-              tick={{ fill: 'currentColor' }}
+              tick={{ fill: 'currentColor', fontSize: 12 }}
               tickFormatter={(value) => `${value.toFixed(2)} SOL`}
+              width={80}
             />
             <YAxis 
               yAxisId="right"
               orientation="right"
               className="text-gray-600 dark:text-gray-400"
-              tick={{ fill: 'currentColor' }}
-              tickFormatter={(value) => `${(value / 1000000).toFixed(1)}M`}
+              tick={{ fill: 'currentColor', fontSize: 12 }}
+              tickFormatter={(value) => {
+                if (value >= 1000000) return `${(value / 1000000).toFixed(1)}M`;
+                if (value >= 1000) return `${(value / 1000).toFixed(1)}K`;
+                return value.toFixed(0);
+              }}
+              width={80}
             />
             <Tooltip content={<CustomTooltip />} />
             <Legend />
