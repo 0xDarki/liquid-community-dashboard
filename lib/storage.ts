@@ -834,6 +834,28 @@ export async function syncMints(limit: number = 50, getAll: boolean = false): Pr
     }
     
     console.log(`[syncMints] No new transactions to add`);
+    
+    // Même s'il n'y a pas de nouvelles transactions, mettre à jour le prix
+    try {
+      const { getTokenPrice } = await import('./solana');
+      const priceData = await getTokenPrice();
+      if (priceData) {
+        const price: TokenPrice = {
+          price: priceData.price,
+          priceInUsd: priceData.priceInUsd,
+          solPrice: priceData.solPrice,
+          solBalance: priceData.solBalance,
+          tokenBalance: priceData.tokenBalance,
+          timestamp: Date.now(),
+        };
+        await saveStoredPrice(price);
+        console.log(`[syncMints] Price updated (no new transactions): ${price.priceInUsd ? '$' + price.priceInUsd.toFixed(8) : price.price.toFixed(8) + ' SOL'}`);
+      }
+    } catch (priceError) {
+      console.error('[syncMints] Error updating price:', priceError);
+      // Ne pas faire échouer la sync si le prix ne peut pas être mis à jour
+    }
+    
     return { added: 0, total: existingMints.length };
   } catch (error) {
     console.error('Error syncing mints:', error);
