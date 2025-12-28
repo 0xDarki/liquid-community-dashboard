@@ -505,12 +505,6 @@ export default function Dashboard() {
           </div>
         )}
 
-        {/* Average Stats (Last 24h) */}
-        {averageStats && averageStats.success && (
-          <div>
-          </div>
-        )}
-
         {/* Modern Chart - 6h intervals */}
         {mintTransactions.length > 0 && (
           <div className="mb-6">
