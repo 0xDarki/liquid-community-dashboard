@@ -266,11 +266,11 @@ export default function Dashboard() {
                 subtitle={`Total: ${averageStats.totalSolAdded.toFixed(4)} SOL (${averageStats.totalTransactions} transactions)`}
               />
               <StatsCard
-                title="Average Tokens/Hour"
+                title="Average $LIQUID/Hour"
                 value={averageStats.averageTokensPerHour24h.toLocaleString('en-US', {
                   maximumFractionDigits: 2,
                 })}
-                subtitle={`Total: ${averageStats.totalTokensAdded.toLocaleString('en-US', { maximumFractionDigits: 2 })} tokens`}
+                subtitle={`Total: ${averageStats.totalTokensAdded.toLocaleString('en-US', { maximumFractionDigits: 2 })} $LIQUID`}
               />
               <StatsCard
                 title="Transactions (24h)"
