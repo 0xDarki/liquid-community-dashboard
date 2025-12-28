@@ -577,7 +577,7 @@ function delay(ms: number): Promise<void> {
 // 10 req/s = 100ms entre requêtes minimum
 // Utiliser 120ms pour être sûr de rester en dessous même avec les retries automatiques
 // Augmenter le délai pour éviter les 429 (10 req/s = 100ms minimum, utiliser 150ms pour être sûr)
-const MIN_REQUEST_DELAY = 150; // 150ms donne ~6.7 req/s max, bien en dessous de 10 req/s
+const MIN_REQUEST_DELAY = 250; // 250ms donne ~4 req/s max, bien en dessous de 10 req/s pour éviter 429
 
 // Fonction pour obtenir les transactions MINT récentes
 export async function getMintTransactions(limit: number = 50, existingSignatures?: Set<string>): Promise<MintTransaction[]> {
@@ -714,14 +714,21 @@ export async function getMintTransactions(limit: number = 50, existingSignatures
               console.error('Error fetching transactions: Invalid RPC API key. Please check your NEXT_PUBLIC_SOLANA_RPC_URL or SOLANA_RPC_URL environment variable.');
               throw error; // Arrêter immédiatement si la clé API est invalide
             }
-            if (error?.message?.includes('429') || error?.message?.includes('Too Many Requests') ||
-                error?.message?.includes('503') || error?.message?.includes('Service Unavailable')) {
+            if (error?.message?.includes('429') || error?.message?.includes('Too Many Requests')) {
+              // Pour les erreurs 429, attendre plus longtemps et réduire la vitesse
+              console.log(`[getMintTransactions] Rate limited (429), waiting 10 seconds before retry...`);
+              await delay(10000); // Délai de 10 secondes pour les erreurs 429
+              // Réduire la vitesse après une erreur 429
+              await delay(MIN_REQUEST_DELAY * 2); // Double délai après 429
+              continue;
+            }
+            if (error?.message?.includes('503') || error?.message?.includes('Service Unavailable')) {
               if (consecutiveErrors >= maxConsecutiveErrors) {
                 console.warn('Too many 503 errors, stopping LP transaction fetching');
                 hasMore = false;
                 break;
               }
-              await delay(5000); // Délai augmenté à 5 secondes pour les erreurs 429/503
+              await delay(5000); // Délai de 5 secondes pour les erreurs 503
               continue;
             }
           }
@@ -872,14 +879,21 @@ export async function getMintTransactions(limit: number = 50, existingSignatures
                 console.error('Error fetching token mint transactions: Invalid RPC API key. Please check your NEXT_PUBLIC_SOLANA_RPC_URL or SOLANA_RPC_URL environment variable.');
                 throw error; // Arrêter immédiatement si la clé API est invalide
               }
-              if (error?.message?.includes('429') || error?.message?.includes('Too Many Requests') ||
-                  error?.message?.includes('503') || error?.message?.includes('Service Unavailable')) {
+              if (error?.message?.includes('429') || error?.message?.includes('Too Many Requests')) {
+                // Pour les erreurs 429, attendre plus longtemps et réduire la vitesse
+                console.log(`[getMintTransactions] Token mint: Rate limited (429), waiting 10 seconds before retry...`);
+                await delay(10000); // Délai de 10 secondes pour les erreurs 429
+                // Réduire la vitesse après une erreur 429
+                await delay(MIN_REQUEST_DELAY * 3); // Triple délai après 429
+                continue;
+              }
+              if (error?.message?.includes('503') || error?.message?.includes('Service Unavailable')) {
                 if (consecutiveErrors >= maxConsecutiveErrors) {
                   console.warn('Too many 503 errors, stopping token mint transaction fetching');
                   hasMore = false;
                   break;
                 }
-                await delay(5000); // Délai augmenté à 5 secondes pour les erreurs 429/503
+                await delay(5000); // Délai de 5 secondes pour les erreurs 503
                 continue;
               }
             }
@@ -1014,14 +1028,21 @@ export async function getTransferTransactions(limit: number = 50): Promise<Trans
           consecutiveErrors = 0; // Réinitialiser le compteur en cas de succès
         } catch (error: any) {
           consecutiveErrors++;
-          // Si erreur 429 ou 503, attendre plus longtemps
-          if (error?.message?.includes('429') || error?.message?.includes('Too Many Requests') ||
-              error?.message?.includes('503') || error?.message?.includes('Service Unavailable')) {
+          // Si erreur 429, attendre plus longtemps et réduire la vitesse
+          if (error?.message?.includes('429') || error?.message?.includes('Too Many Requests')) {
+            console.log(`[getTransferTransactions] Rate limited (429), waiting 10 seconds before retry...`);
+            await delay(10000); // Délai de 10 secondes pour les erreurs 429
+            // Réduire la vitesse après une erreur 429
+            await delay(MIN_REQUEST_DELAY * 3); // Triple délai après 429
+            continue;
+          }
+          // Si erreur 503, attendre plus longtemps
+          if (error?.message?.includes('503') || error?.message?.includes('Service Unavailable')) {
             if (consecutiveErrors >= maxConsecutiveErrors) {
               console.warn('Too many 503 errors for transfers, stopping and returning what we have');
               break; // Break au lieu de throw pour retourner ce qu'on a
             }
-            await delay(5000); // Délai augmenté à 5 secondes pour les erreurs 429/503
+            await delay(5000); // Délai de 5 secondes pour les erreurs 503
             continue;
           }
         }
