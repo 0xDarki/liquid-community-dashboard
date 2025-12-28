@@ -1210,8 +1210,16 @@ export async function getTokenPrice(): Promise<{ price: number; priceInUsd: numb
     
     // Récupérer les prix depuis Jupiter API
     const SOL_MINT = 'So11111111111111111111111111111111111111112';
+    const jupiterApiKey = process.env.JUPITER_API_KEY;
+    
+    const headers: HeadersInit = {};
+    if (jupiterApiKey) {
+      headers['x-api-key'] = jupiterApiKey;
+    }
+    
     const priceResponse = await fetch(
-      `https://api.jup.ag/price/v3?ids=${SOL_MINT},${TOKEN_MINT_ADDRESS}`
+      `https://api.jup.ag/price/v3?ids=${SOL_MINT},${TOKEN_MINT_ADDRESS}`,
+      { headers }
     );
     
     if (!priceResponse.ok) {
@@ -1219,10 +1227,22 @@ export async function getTokenPrice(): Promise<{ price: number; priceInUsd: numb
       // Fallback: calculer le prix depuis la LP si on a les balances
       if (tokenBalance > 0 && solBalanceInSol > 0) {
         const price = solBalanceInSol / tokenBalance;
+        // Essayer de récupérer le prix du SOL depuis CoinGecko comme fallback
+        let solPrice = 0;
+        try {
+          const solResponse = await fetch('https://api.coingecko.com/api/v3/simple/price?ids=solana&vs_currencies=usd');
+          if (solResponse.ok) {
+            const solData = await solResponse.json();
+            solPrice = solData.solana?.usd || 0;
+          }
+        } catch (err) {
+          console.error('[getTokenPrice] Error fetching SOL price from CoinGecko:', err);
+        }
+        
         return {
           price,
-          priceInUsd: 0,
-          solPrice: 0,
+          priceInUsd: solPrice > 0 ? price * solPrice : 0,
+          solPrice,
           solBalance: solBalanceInSol,
           tokenBalance,
         };
