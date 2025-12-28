@@ -335,14 +335,14 @@ export async function syncMints(limit: number = 50, getAll: boolean = false): Pr
     const { getMintTransactions } = await import('./solana');
     
     // Récupérer les mints depuis la blockchain
-    // Si getAll=true, getMintTransactions(0) récupérera jusqu'à ~2000 transactions (limité pour éviter timeout)
-    // L'utilisateur peut relancer plusieurs fois pour récupérer progressivement toutes les transactions
-    const newMints = await getMintTransactions(syncLimit);
+    // Passer les signatures existantes pour ne traiter que les transactions manquantes
+    // Cela économise beaucoup de requêtes RPC en évitant de traiter les transactions déjà stockées
+    const newMints = await getMintTransactions(syncLimit, existingSignatures);
     
-    console.log(`[syncMints] Retrieved ${newMints.length} transactions from blockchain`);
+    console.log(`[syncMints] Retrieved ${newMints.length} new transactions from blockchain (only missing ones)`);
     
-    // Filtrer seulement les nouveaux (qui ne sont pas déjà dans le cache)
-    const toAdd = newMints.filter(m => !existingSignatures.has(m.signature));
+    // Les transactions retournées sont déjà filtrées (seulement les nouvelles)
+    const toAdd = newMints;
     
     console.log(`[syncMints] Found ${toAdd.length} new transactions to add`);
     

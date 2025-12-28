@@ -577,9 +577,9 @@ function delay(ms: number): Promise<void> {
 const MIN_REQUEST_DELAY = 120; // 120ms donne ~8 req/s max, bien en dessous de 10 req/s
 
 // Fonction pour obtenir les transactions MINT récentes
-export async function getMintTransactions(limit: number = 50): Promise<MintTransaction[]> {
+export async function getMintTransactions(limit: number = 50, existingSignatures?: Set<string>): Promise<MintTransaction[]> {
   try {
-    console.log(`[getMintTransactions] Starting with limit=${limit}`);
+    console.log(`[getMintTransactions] Starting with limit=${limit}, existingSignatures=${existingSignatures?.size || 0}`);
     const transactions: MintTransaction[] = [];
     const seenSignatures = new Set<string>();
     let processedCount = 0;
@@ -605,10 +605,9 @@ export async function getMintTransactions(limit: number = 50): Promise<MintTrans
       let pageCount = 0;
       // Pour getAll, traiter 1500 transactions par batch pour éviter le timeout Vercel (300 secondes)
       // Calcul : 1500 transactions × 120ms = 180s + overhead (~20s) = ~200s < 300s timeout
-      // L'API limite getSignaturesForAddress à 1000 signatures, donc on fait 2 requêtes de 1000 signatures
-      // Batch 1 : 1000 signatures récupérées, toutes traitées (1000 transactions)
-      // Batch 2 : 1000 signatures récupérées, 500 traitées (pour atteindre 1500 au total)
-      const maxPages = getAll ? 2 : 2; // Maximum 2 pages en mode getAll (2 batches × 1500 tx = ~3000 transactions max)
+      // L'API limite getSignaturesForAddress à 1000 signatures, donc on fait plusieurs requêtes de 1000 signatures
+      // Chaque batch traite jusqu'à 1500 transactions (peut nécessiter 2 requêtes de 1000 signatures)
+      const maxPages = getAll ? 10 : 2; // Maximum 10 pages en mode getAll pour permettre plusieurs batches
       const maxTransactionsForGetAll = 3000; // Limite totale pour éviter timeout
       const transactionsPerBatch = 1500; // Traiter 1500 transactions par batch (limite pour rester < 300s timeout Vercel)
       
@@ -638,18 +637,20 @@ export async function getMintTransactions(limit: number = 50): Promise<MintTrans
         before = signatures[signatures.length - 1].signature;
         
         // Pour getAll, traiter 1500 transactions par batch
-        // Batch 1 (page 0) : traiter toutes les 1000 signatures
-        // Batch 2 (page 1) : traiter seulement 500 signatures pour atteindre 1500 au total
+        // Traiter toutes les signatures récupérées jusqu'à atteindre 1500 transactions par batch
+        const remainingInBatch = transactionsPerBatch - (transactions.length % transactionsPerBatch);
+        const remainingTotal = maxTransactionsForGetAll - transactions.length;
         const signaturesToProcess = getAll 
-          ? (pageCount === 0 
-              ? signatures.slice(0, Math.min(signatures.length, transactionsPerBatch))
-              : signatures.slice(0, Math.min(signatures.length, maxTransactionsForGetAll - transactions.length)))
+          ? signatures.slice(0, Math.min(signatures.length, remainingInBatch, remainingTotal))
           : signatures;
         
         console.log(`[getMintTransactions] Processing ${signaturesToProcess.length} signatures (batch ${pageCount + 1})`);
         
         for (const sigInfo of signaturesToProcess) {
-          if (EXCLUDED_TRANSACTIONS.includes(sigInfo.signature) || seenSignatures.has(sigInfo.signature)) {
+          // Ignorer les transactions exclues, déjà vues, ou déjà stockées
+          if (EXCLUDED_TRANSACTIONS.includes(sigInfo.signature) || 
+              seenSignatures.has(sigInfo.signature) ||
+              (existingSignatures && existingSignatures.has(sigInfo.signature))) {
             continue;
           }
           
@@ -776,16 +777,20 @@ export async function getMintTransactions(limit: number = 50): Promise<MintTrans
           before = tokenSignatures[tokenSignatures.length - 1].signature;
           
           // Pour getAll, traiter 1500 transactions par batch
+          // Traiter toutes les signatures récupérées jusqu'à atteindre 1500 transactions par batch
+          const remainingInBatch = transactionsPerBatch - (transactions.length % transactionsPerBatch);
+          const remainingTotal = maxTransactionsForGetAll - transactions.length;
           const tokenSignaturesToProcess = getAll 
-            ? (pageCount === 0 
-                ? tokenSignatures.slice(0, Math.min(tokenSignatures.length, transactionsPerBatch))
-                : tokenSignatures.slice(0, Math.min(tokenSignatures.length, maxTransactionsForGetAll - transactions.length)))
+            ? tokenSignatures.slice(0, Math.min(tokenSignatures.length, remainingInBatch, remainingTotal))
             : tokenSignatures;
           
           console.log(`[getMintTransactions] Token mint: Processing ${tokenSignaturesToProcess.length} signatures (batch ${pageCount + 1})`);
           
           for (const sigInfo of tokenSignaturesToProcess) {
-            if (EXCLUDED_TRANSACTIONS.includes(sigInfo.signature) || seenSignatures.has(sigInfo.signature)) {
+            // Ignorer les transactions exclues, déjà vues, ou déjà stockées
+            if (EXCLUDED_TRANSACTIONS.includes(sigInfo.signature) || 
+                seenSignatures.has(sigInfo.signature) ||
+                (existingSignatures && existingSignatures.has(sigInfo.signature))) {
               continue;
             }
             
