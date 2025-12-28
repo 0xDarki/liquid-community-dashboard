@@ -186,8 +186,12 @@ export default function Dashboard() {
             </div>
           </div>
           <div className="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
-            <span>Last update:</span>
-            <span className="font-medium">{lastUpdate.toLocaleTimeString('en-US')}</span>
+            <span>Last sync:</span>
+            <span className="font-medium">
+              {lastSyncTime 
+                ? `${lastSyncTime.toLocaleDateString('en-US')} ${lastSyncTime.toLocaleTimeString('en-US')}`
+                : 'Never'}
+            </span>
           </div>
           {error && (
             <div className="mt-4 p-4 bg-red-100 dark:bg-red-900 border border-red-400 dark:border-red-700 rounded-lg">
