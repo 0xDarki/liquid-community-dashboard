@@ -183,16 +183,6 @@ export default function ModernChart({ transactions }: ModernChartProps) {
       }
     }
     
-    // Si on est encore dans une période de downtime (heure actuelle inactive)
-    const currentHourStatus = hourStatus.get(currentHour);
-    if (currentDowntimeStart !== null && currentHourStatus && !currentHourStatus.active) {
-      downtimePeriods.push({
-        start: currentDowntimeStart,
-        end: now,
-        duration: now - currentDowntimeStart
-      });
-    }
-    
     // Déterminer le statut actuel (déclarer d'abord les variables nécessaires)
     const lastCompleteHourStart = Math.floor(now / 3600) * 3600 - 3600;
     const lastCompleteHourEnd = Math.floor(now / 3600) * 3600;
@@ -201,6 +191,28 @@ export default function ModernChart({ transactions }: ModernChartProps) {
     });
     
     const currentHourStart = Math.floor(now / 3600) * 3600;
+    
+    // Si on est encore dans une période de downtime (heure actuelle inactive)
+    // Mais seulement si l'heure actuelle a déjà commencé depuis un certain temps (plus de 10 minutes)
+    const currentHourStatus = hourStatus.get(currentHour);
+    const timeSinceCurrentHourStart = now - currentHourStart;
+    const minDowntimeDuration = 10 * 60; // 10 minutes minimum pour considérer comme downtime
+    
+    if (currentDowntimeStart !== null && currentHourStatus && !currentHourStatus.active) {
+      // Ne pas ajouter si l'heure actuelle vient juste de commencer (moins de 10 minutes)
+      if (timeSinceCurrentHourStart >= minDowntimeDuration) {
+        downtimePeriods.push({
+          start: currentDowntimeStart,
+          end: now,
+          duration: now - currentDowntimeStart
+        });
+      }
+    }
+    
+    // Filtrer les périodes de downtime trop courtes (moins de 10 minutes) ou avec durée 0
+    const filteredDowntimePeriods = downtimePeriods.filter(downtime => 
+      downtime.duration >= minDowntimeDuration && downtime.duration > 0
+    );
     const currentHourTransactions = sortedTxs.filter(tx => tx.timestamp >= currentHourStart);
     const hasRecentTransaction = lastTransaction.timestamp >= tenMinutesAgo;
     
@@ -315,10 +327,10 @@ export default function ModernChart({ transactions }: ModernChartProps) {
     if (lastHourTransactions.length >= 5) {
       return {
         status: 'operational',
-        message: `Bot operational (${lastHourTransactions.length} tx in last hour)`,
+        message: `Bot operational`,
         color: 'green',
         txCount: uptimeTxCount, // Utiliser le nombre de transactions de l'uptime
-        downtimePeriods: downtimePeriods.slice(-5), // Dernières 5 périodes d'inactivité
+        downtimePeriods: filteredDowntimePeriods.slice(-5), // Dernières 5 périodes d'inactivité
         uptimeDuration
       };
     }
@@ -328,11 +340,11 @@ export default function ModernChart({ transactions }: ModernChartProps) {
       const minutesSinceLastTx = Math.floor((now - lastTransaction.timestamp) / 60);
       return {
         status: 'active',
-        message: `Bot active (last tx ${minutesSinceLastTx} min ago, ${currentHourTransactions.length} tx this hour)`,
+        message: `Bot active (last tx ${minutesSinceLastTx} min ago)`,
         color: 'blue',
         txCount: uptimeTxCount, // Utiliser le nombre de transactions de l'uptime
         minutesAgo: minutesSinceLastTx,
-        downtimePeriods: downtimePeriods.slice(-5),
+        downtimePeriods: filteredDowntimePeriods.slice(-5),
         uptimeDuration
       };
     }
@@ -345,7 +357,7 @@ export default function ModernChart({ transactions }: ModernChartProps) {
         message: `Bot inactive (no tx in last 10 min, last tx ${minutesSinceLastTx} min ago)`,
         color: 'red',
         minutesAgo: minutesSinceLastTx,
-        downtimePeriods: downtimePeriods.slice(-5),
+        downtimePeriods: filteredDowntimePeriods.slice(-5),
         uptimeDuration: null
       };
     }
@@ -353,10 +365,10 @@ export default function ModernChart({ transactions }: ModernChartProps) {
     // Par défaut, considérer comme actif si des transactions récentes
     return {
       status: 'active',
-      message: `Bot active (${currentHourTransactions.length} tx this hour)`,
+      message: `Bot active`,
       color: 'blue',
       txCount: uptimeTxCount, // Utiliser le nombre de transactions de l'uptime
-      downtimePeriods: downtimePeriods.slice(-5),
+      downtimePeriods: filteredDowntimePeriods.slice(-5),
       uptimeDuration
     };
   };
@@ -430,7 +442,16 @@ export default function ModernChart({ transactions }: ModernChartProps) {
                 {botStatus.txCount !== undefined && (
                   <>
                     <span className="text-xs opacity-70">•</span>
-                    <span className="text-xs font-medium">{botStatus.txCount} tx</span>
+                    <span className="text-xs font-medium">{botStatus.txCount} txs</span>
+                    {/* Calculer et afficher txs/h */}
+                    {botStatus.uptimeDuration !== null && botStatus.uptimeDuration > 0 && (
+                      <>
+                        <span className="text-xs opacity-70">•</span>
+                        <span className="text-xs font-medium">
+                          {Math.round((botStatus.txCount / (botStatus.uptimeDuration / 3600)) * 10) / 10} txs/h
+                        </span>
+                      </>
+                    )}
                   </>
                 )}
               </div>
@@ -439,11 +460,6 @@ export default function ModernChart({ transactions }: ModernChartProps) {
               <p className="text-xs text-gray-600 dark:text-gray-400">
                 {botStatus.message}
               </p>
-              {botStatus.txCount !== undefined && (
-                <p className="text-xs text-gray-500 dark:text-gray-500 mt-0.5">
-                  {botStatus.txCount} transactions this hour
-                </p>
-              )}
               {botStatus.minutesAgo !== undefined && (
                 <p className="text-xs text-gray-500 dark:text-gray-500 mt-0.5">
                   Last transaction: {botStatus.minutesAgo} min ago
