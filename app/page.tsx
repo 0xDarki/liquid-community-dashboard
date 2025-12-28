@@ -14,11 +14,66 @@ export default function Dashboard() {
   const [lastUpdate, setLastUpdate] = useState<Date>(new Date());
   const [error, setError] = useState<string | null>(null);
   const [syncing, setSyncing] = useState(false);
+  const [recovering, setRecovering] = useState(false);
   const [lastSyncTime, setLastSyncTime] = useState<Date | null>(null);
   const [timeUntilNextSync, setTimeUntilNextSync] = useState<number>(0);
   const [isSyncInProgress, setIsSyncInProgress] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
   const [transactionsPerPage] = useState(20);
+  const [isAuthorizedDomain, setIsAuthorizedDomain] = useState<boolean>(true);
+  
+  // Vérifier si on est sur le domaine autorisé
+  useEffect(() => {
+    const checkDomain = async () => {
+      if (typeof window === 'undefined') return;
+      
+      try {
+        // Méthode 1: Vérifier via une route API (plus fiable)
+        const res = await fetch('/api/auth/check-domain');
+        if (res.ok) {
+          const data = await res.json();
+          setIsAuthorizedDomain(data.authorized || false);
+          console.log('[Domain Check]', data);
+          return;
+        }
+      } catch (error) {
+        console.warn('[Domain Check] API check failed, using fallback:', error);
+      }
+      
+      // Méthode 2: Fallback - vérifier directement le hostname
+      try {
+        const authorizedDomain = process.env.NEXT_PUBLIC_AUTHORIZED_DOMAIN;
+        
+        // Si aucun domaine n'est configuré, autoriser toutes les requêtes (pour le développement)
+        if (!authorizedDomain || authorizedDomain.trim() === '') {
+          console.log('[Domain Check] No authorized domain configured, allowing all domains');
+          setIsAuthorizedDomain(true);
+          return;
+        }
+        
+        const currentHost = window.location.hostname.toLowerCase();
+        const normalizedAuthorized = authorizedDomain.replace(/^https?:\/\//, '').split(':')[0].toLowerCase().trim();
+        const normalizedCurrent = currentHost.replace(/^https?:\/\//, '').split(':')[0].toLowerCase().trim();
+        
+        const isAuthorized = normalizedCurrent === normalizedAuthorized || 
+                             normalizedCurrent.endsWith(`.${normalizedAuthorized}`);
+        
+        console.log('[Domain Check]', {
+          current: normalizedCurrent,
+          authorized: normalizedAuthorized,
+          isAuthorized,
+        });
+        
+        setIsAuthorizedDomain(isAuthorized);
+      } catch (error) {
+        console.error('[Domain Check] Error in fallback check:', error);
+        // En cas d'erreur, autoriser par défaut (pour le développement)
+        setIsAuthorizedDomain(true);
+      }
+    };
+    
+    checkDomain();
+  }, []);
 
   // Calculer les stats depuis les transactions mints
   const calculateStatsFromMints = (mints: MintTransaction[]): PoolStats => {
@@ -278,52 +333,101 @@ export default function Dashboard() {
               >
                 {loading ? 'Refreshing...' : 'Refresh'}
               </button>
-              <button
-                onClick={async () => {
-                  setSyncing(true);
-                  try {
-                    const res = await fetch('/api/mints/sync?limit=60');
-                    const data = await res.json();
-                    if (res.ok && data.success) {
-                      // Le sync state est maintenant mis à jour côté serveur
-                      // Attendre un peu pour que le sync state soit bien sauvegardé
-                      await new Promise(resolve => setTimeout(resolve, 500));
-                      // Rafraîchir toutes les données pour qu'elles soient à jour
-                      await fetchData();
-                    } else {
-                      // Gérer les erreurs 429 (Too Many Requests)
-                      if (res.status === 429) {
-                        const message = data.timeRemaining 
-                          ? `Please wait ${data.timeRemaining} seconds before updating again. ${data.error || ''}`
-                          : data.error || 'Please wait before updating again';
-                        alert(message);
-                      } else {
-                        alert(`Error: ${data.error || 'Update failed'}`);
+              {/* Debug: Afficher l'état d'autorisation (à retirer en production) */}
+              {process.env.NODE_ENV === 'development' && (
+                <span className="text-xs text-gray-500 dark:text-gray-400 px-2 py-1 bg-gray-100 dark:bg-gray-800 rounded">
+                  Auth: {isAuthorizedDomain ? '✓' : '✗'} | Domain: {typeof window !== 'undefined' ? window.location.hostname : 'N/A'}
+                </span>
+              )}
+              {isAuthorizedDomain && (
+                <>
+                  <button
+                    onClick={async () => {
+                      setSyncing(true);
+                      try {
+                        const res = await fetch('/api/mints/sync?limit=60');
+                        const data = await res.json();
+                        if (res.ok && data.success) {
+                          // Le sync state est maintenant mis à jour côté serveur
+                          // Attendre un peu pour que le sync state soit bien sauvegardé
+                          await new Promise(resolve => setTimeout(resolve, 500));
+                          // Rafraîchir toutes les données pour qu'elles soient à jour
+                          await fetchData();
+                        } else {
+                          // Gérer les erreurs 429 (Too Many Requests) et 403 (Forbidden)
+                          if (res.status === 403) {
+                            alert('Unauthorized: This action is only available on the private domain');
+                          } else if (res.status === 429) {
+                            const message = data.timeRemaining 
+                              ? `Please wait ${data.timeRemaining} seconds before updating again. ${data.error || ''}`
+                              : data.error || 'Please wait before updating again';
+                            alert(message);
+                          } else {
+                            alert(`Error: ${data.error || 'Update failed'}`);
+                          }
+                        }
+                      } catch (error) {
+                        console.error('Error updating:', error);
+                        alert('Error during update');
+                      } finally {
+                        setSyncing(false);
                       }
+                    }}
+                    disabled={syncing || loading || isSyncInProgress || timeUntilNextSync > 0 || recovering}
+                    className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors text-sm font-medium"
+                    title={
+                      isSyncInProgress 
+                        ? 'A sync is already in progress' 
+                        : timeUntilNextSync > 0 
+                          ? `Please wait ${Math.ceil(timeUntilNextSync / 1000)}s before updating again` 
+                          : 'Update data from blockchain'
                     }
-                  } catch (error) {
-                    console.error('Error updating:', error);
-                    alert('Error during update');
-                  } finally {
-                    setSyncing(false);
-                  }
-                }}
-                disabled={syncing || loading || isSyncInProgress || timeUntilNextSync > 0}
-                className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors text-sm font-medium"
-                title={
-                  isSyncInProgress 
-                    ? 'A sync is already in progress' 
-                    : timeUntilNextSync > 0 
-                      ? `Please wait ${Math.ceil(timeUntilNextSync / 1000)}s before updating again` 
-                      : 'Update data from blockchain'
-                }
-              >
-                {syncing || isSyncInProgress
-                  ? 'Updating...' 
-                  : timeUntilNextSync > 0 
-                    ? `Update (${Math.ceil(timeUntilNextSync / 1000)}s)`
-                    : 'Update'}
-              </button>
+                  >
+                    {syncing || isSyncInProgress
+                      ? 'Updating...' 
+                      : timeUntilNextSync > 0 
+                        ? `Update (${Math.ceil(timeUntilNextSync / 1000)}s)`
+                        : 'Update'}
+                  </button>
+                  <button
+                    onClick={async () => {
+                      if (!confirm('This will recover ALL transactions from the blockchain and may take several minutes. Continue?')) {
+                        return;
+                      }
+                      setRecovering(true);
+                      try {
+                        const res = await fetch('/api/mints/recover', { method: 'POST' });
+                        const data = await res.json();
+                        if (res.ok && data.success) {
+                          alert(`Recovery successful: ${data.added} transactions recovered. Total: ${data.total}. ${data.message || ''}`);
+                          // Attendre un peu pour que le sync state soit bien sauvegardé
+                          await new Promise(resolve => setTimeout(resolve, 500));
+                          // Rafraîchir toutes les données pour qu'elles soient à jour
+                          await fetchData();
+                        } else {
+                          if (res.status === 403) {
+                            alert('Unauthorized: This action is only available on the private domain');
+                          } else if (res.status === 429) {
+                            alert(`Error: ${data.message || data.error || 'Recovery failed due to rate limiting'}`);
+                          } else {
+                            alert(`Error: ${data.error || data.message || 'Recovery failed'}`);
+                          }
+                        }
+                      } catch (error) {
+                        console.error('Error recovering:', error);
+                        alert('Error during recovery');
+                      } finally {
+                        setRecovering(false);
+                      }
+                    }}
+                    disabled={syncing || loading || recovering || isSyncInProgress}
+                    className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors text-sm font-medium"
+                    title="Recover all transactions from blockchain and sync to Supabase"
+                  >
+                    {recovering ? 'Recovering...' : 'Recover All'}
+                  </button>
+                </>
+              )}
             </div>
           </div>
           <div className="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400">

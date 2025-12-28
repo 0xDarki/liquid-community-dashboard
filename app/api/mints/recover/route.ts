@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { syncMints, saveSyncState, loadSyncState } from '@/lib/storage';
+import { isAuthorizedDomain } from '@/lib/auth';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -7,8 +8,19 @@ export const maxDuration = 300; // 5 minutes
 
 // Route pour récupérer toutes les transactions depuis la blockchain
 // Cette route ignore les restrictions de temps et récupère tout
-export async function POST() {
+export async function POST(request: Request) {
   try {
+    // Vérifier si la requête provient d'un domaine autorisé
+    if (!isAuthorizedDomain(request)) {
+      return NextResponse.json(
+        { 
+          success: false,
+          error: 'Unauthorized: This action is only available on the private domain',
+        },
+        { status: 403 } // Forbidden
+      );
+    }
+    
     console.log('[Recover] Starting full recovery of all transactions from blockchain...');
     
     // Vérifier l'état actuel
@@ -265,7 +277,17 @@ export async function POST() {
 }
 
 // Route GET pour récupérer toutes les transactions (même comportement que POST)
-export async function GET() {
-  return POST();
+export async function GET(request: Request) {
+  // Vérifier si la requête provient d'un domaine autorisé
+  if (!isAuthorizedDomain(request)) {
+    return NextResponse.json(
+      { 
+        success: false,
+        error: 'Unauthorized: This action is only available on the private domain',
+      },
+      { status: 403 } // Forbidden
+    );
+  }
+  return POST(request);
 }
 

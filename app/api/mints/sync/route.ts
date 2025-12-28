@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { syncMints, loadSyncState, saveSyncState } from '@/lib/storage';
+import { isAuthorizedDomain } from '@/lib/auth';
 
 export const dynamic = 'force-dynamic'; // Force dynamic rendering
 export const revalidate = 0; // Disable static generation
@@ -73,6 +74,17 @@ async function canSync(): Promise<{ allowed: boolean; reason?: string; timeRemai
 
 export async function POST(request: Request) {
   try {
+    // Vérifier si la requête provient d'un domaine autorisé
+    if (!isAuthorizedDomain(request)) {
+      return NextResponse.json(
+        { 
+          success: false,
+          error: 'Unauthorized: This action is only available on the private domain',
+        },
+        { status: 403 } // Forbidden
+      );
+    }
+    
     // Vérifier si une sync peut être lancée
     const canSyncResult = await canSync();
     if (!canSyncResult.allowed) {
@@ -161,6 +173,17 @@ export async function POST(request: Request) {
 
 export async function GET(request: Request) {
   try {
+    // Vérifier si la requête provient d'un domaine autorisé
+    if (!isAuthorizedDomain(request)) {
+      return NextResponse.json(
+        { 
+          success: false,
+          error: 'Unauthorized: This action is only available on the private domain',
+        },
+        { status: 403 } // Forbidden
+      );
+    }
+    
     // Vérifier si une sync peut être lancée
     const canSyncResult = await canSync();
     if (!canSyncResult.allowed) {

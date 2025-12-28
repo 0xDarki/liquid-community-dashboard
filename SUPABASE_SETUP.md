@@ -33,7 +33,16 @@ Ajoutez les variables d'environnement suivantes dans votre fichier `.env.local` 
 ```env
 NEXT_PUBLIC_SUPABASE_URL=https://your-project.supabase.co
 SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
+
+# Optionnel : Restreindre les boutons Update et Recover All au domaine privé
+AUTHORIZED_DOMAIN=your-private-domain.vercel.app
+NEXT_PUBLIC_AUTHORIZED_DOMAIN=your-private-domain.vercel.app
 ```
+
+**Note sur AUTHORIZED_DOMAIN :**
+- Si vous configurez `AUTHORIZED_DOMAIN`, les boutons "Update" et "Recover All" ne seront disponibles que sur ce domaine
+- Sur le domaine public, ces boutons seront masqués et les routes API retourneront une erreur 403
+- Laissez ces variables vides si vous voulez autoriser tous les domaines (non recommandé en production)
 
 **Important :**
 - `NEXT_PUBLIC_SUPABASE_URL` : L'URL de votre projet Supabase (commence par `https://`)
