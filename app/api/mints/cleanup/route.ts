@@ -3,6 +3,7 @@ import { detectAndRemoveFailedTransactions } from '@/lib/storage';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
+export const maxDuration = 300; // 5 minutes (maximum pour Vercel Pro/Enterprise)
 
 export async function POST(request: Request) {
   try {

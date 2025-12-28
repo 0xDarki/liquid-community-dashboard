@@ -3,6 +3,7 @@ import { syncMints } from '@/lib/storage';
 
 export const dynamic = 'force-dynamic'; // Force dynamic rendering
 export const revalidate = 0; // Disable static generation
+export const maxDuration = 300; // 5 minutes (maximum pour Vercel Pro/Enterprise)
 
 export async function POST(request: Request) {
   try {
