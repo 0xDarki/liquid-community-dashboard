@@ -19,7 +19,9 @@ export async function POST(request: Request) {
       success: true, 
       added: result.added,
       total: result.total,
-      message: `Added ${result.added} new transactions. Total: ${result.total}`
+      message: getAll 
+        ? `Added ${result.added} new transactions. Total: ${result.total}. Note: Sync is limited to ~3000 transactions per run to avoid timeout. You can run sync again to continue fetching more transactions.`
+        : `Added ${result.added} new transactions. Total: ${result.total}`
     });
   } catch (error: any) {
     console.error('Error syncing mints:', error);
@@ -45,7 +47,9 @@ export async function GET(request: Request) {
       success: true, 
       added: result.added,
       total: result.total,
-      message: `Added ${result.added} new transactions. Total: ${result.total}`
+      message: getAll 
+        ? `Added ${result.added} new transactions. Total: ${result.total}. Note: Sync is limited to ~3000 transactions per run to avoid timeout. You can run sync again to continue fetching more transactions.`
+        : `Added ${result.added} new transactions. Total: ${result.total}`
     });
   } catch (error: any) {
     console.error('Error syncing mints:', error);

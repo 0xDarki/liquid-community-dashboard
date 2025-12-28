@@ -572,10 +572,9 @@ function delay(ms: number): Promise<void> {
 }
 
 // Délai minimum entre requêtes pour respecter la limite de 10 req/s
-// Avec les retries automatiques de @solana/web3.js, on doit être très conservateur
-// 10 req/s = 100ms entre requêtes, mais avec retries on peut avoir 2-3x plus de requêtes
-// Réduire le délai pour accélérer le traitement (mais rester en dessous de 10 req/s)
-const MIN_REQUEST_DELAY = 300; // 300ms pour accélérer (donne ~3 req/s max, bien en dessous de 10 req/s)
+// 10 req/s = 100ms entre requêtes minimum
+// Utiliser 120ms pour être sûr de rester en dessous même avec les retries automatiques
+const MIN_REQUEST_DELAY = 120; // 120ms donne ~8 req/s max, bien en dessous de 10 req/s
 
 // Fonction pour obtenir les transactions MINT récentes
 export async function getMintTransactions(limit: number = 50): Promise<MintTransaction[]> {
@@ -604,14 +603,16 @@ export async function getMintTransactions(limit: number = 50): Promise<MintTrans
       let before: string | undefined = undefined;
       let hasMore = true;
       let pageCount = 0;
-      // Pour getAll, permettre plus de pages pour récupérer toutes les transactions
-      const maxPages = getAll ? 100 : 2; // Maximum 100 pages en mode getAll
+      // Pour getAll, limiter à ~3000 transactions pour éviter le timeout Vercel (300s)
+      // Avec 1000 signatures par page, on peut traiter beaucoup plus efficacement
+      const maxPages = getAll ? 3 : 2; // Maximum 3 pages en mode getAll (3 pages × 1000 sigs = ~3000 transactions max)
+      const maxTransactionsForGetAll = 3000; // Limite pour éviter timeout
       
-      while (hasMore && transactions.length < (getAll ? 100000 : limit) && pageCount < maxPages) {
-        // Pour getAll, récupérer plus de signatures par page
-        // Ne pas limiter par maxSignatures en mode getAll, mais utiliser une limite raisonnable par page
+      while (hasMore && transactions.length < (getAll ? maxTransactionsForGetAll : limit) && pageCount < maxPages) {
+        // Pour getAll, récupérer jusqu'à 1000 signatures par page (limite max de l'API Solana)
+        // Cela réduit drastiquement le nombre de requêtes getSignaturesForAddress
         const signatureLimit = getAll 
-          ? Math.min(100, 1000) // En getAll, récupérer jusqu'à 100 signatures par page
+          ? 1000 // En getAll, récupérer jusqu'à 1000 signatures par page (limite max API)
           : Math.min(10, maxSignatures - transactions.length);
         console.log(`[getMintTransactions] Fetching page ${pageCount + 1}, signatureLimit=${signatureLimit}, before=${before?.substring(0, 20)}...`);
         const signatures = await connection.getSignaturesForAddress(
@@ -644,8 +645,8 @@ export async function getMintTransactions(limit: number = 50): Promise<MintTrans
           }
           
           if (processedCount > 0) {
-            // En mode getAll, réduire le délai pour accélérer (mais rester prudent)
-            await delay(getAll ? MIN_REQUEST_DELAY : MIN_REQUEST_DELAY * 2);
+            // Utiliser le délai minimum pour maximiser la vitesse (10 req/s)
+            await delay(MIN_REQUEST_DELAY);
           }
           
           try {
@@ -679,7 +680,7 @@ export async function getMintTransactions(limit: number = 50): Promise<MintTrans
                 hasMore = false;
                 break;
               }
-              await delay(3000); // Délai augmenté à 3 secondes
+              await delay(2000); // Délai réduit à 2 secondes pour les erreurs 429/503
               continue;
             }
           }
@@ -732,15 +733,14 @@ export async function getMintTransactions(limit: number = 50): Promise<MintTrans
         let before: string | undefined = undefined;
         let hasMore = true;
         let pageCount = 0;
-        // Pour getAll, limiter drastiquement (seulement 2 pages max)
-        // Pour les limites normales, seulement 1 page
-        const maxPages = getAll ? 2 : 1;
+        // Pour getAll, limiter à quelques pages pour éviter timeout
+        // Avec 1000 signatures par page, on peut traiter beaucoup plus efficacement
+        const maxPages = getAll ? 3 : 1; // 3 pages max en getAll pour token mint (3 × 1000 = ~3000 transactions max)
         
         while (hasMore && (getAll || transactions.length < limit) && pageCount < maxPages) {
-          // Limiter drastiquement le nombre de signatures par page
-          // Pour getAll, seulement 20 signatures par page pour accélérer
+          // Utiliser 1000 signatures par page (limite max de l'API Solana) pour maximiser l'efficacité
           const tokenSignatureLimit = getAll 
-            ? Math.min(20, 100) // En getAll, seulement 20 signatures par page pour accélérer
+            ? 1000 // En getAll, récupérer jusqu'à 1000 signatures par page (limite max API)
             : Math.min(10, (limit * 2) - transactions.length);
           console.log(`[getMintTransactions] Token mint: Fetching page ${pageCount + 1}, signatureLimit=${tokenSignatureLimit}`);
           const tokenSignatures = await connection.getSignaturesForAddress(
@@ -770,7 +770,7 @@ export async function getMintTransactions(limit: number = 50): Promise<MintTrans
             
             if (processedCount > 0) {
               // En mode getAll, réduire le délai pour accélérer (mais rester prudent)
-              await delay(getAll ? MIN_REQUEST_DELAY : MIN_REQUEST_DELAY * 2);
+              await delay(MIN_REQUEST_DELAY);
             }
             
             try {
@@ -801,7 +801,7 @@ export async function getMintTransactions(limit: number = 50): Promise<MintTrans
                   hasMore = false;
                   break;
                 }
-                await delay(3000); // Délai augmenté
+                await delay(2000); // Délai réduit à 2 secondes pour les erreurs 429/503
                 continue;
               }
             }
