@@ -4,6 +4,7 @@ import React, { useEffect, useState } from 'react';
 import StatsCard from '@/components/StatsCard';
 import TransactionTable from '@/components/TransactionTable';
 import StatsChart from '@/components/StatsChart';
+import ModernChart from '@/components/ModernChart';
 import type { MintTransaction, TransferTransaction, PoolStats } from '@/lib/solana';
 import type { HistoricalDataPoint } from '@/lib/storage';
 
@@ -285,6 +286,13 @@ export default function Dashboard() {
                 subtitle={`${averageStats.totalTransactions} transactions in 24h`}
               />
             </div>
+          </div>
+        )}
+
+        {/* Modern Chart - 6h intervals */}
+        {mintTransactions.length > 0 && (
+          <div className="mb-6">
+            <ModernChart transactions={mintTransactions} />
           </div>
         )}
 
