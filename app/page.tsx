@@ -340,7 +340,7 @@ export default function Dashboard() {
                 Liquid Community Dashboard
               </h1>
               <p className="text-sm text-gray-600 dark:text-gray-400">
-                Liquidity additions tracking - each liquidity addition is followed by a burn. Built by 0xDarki.
+                Liquidity additions tracking - each liquidity addition is followed by a burn. Tek built by @leyten. Dashboard built by @0xDarki.
               </p>
             </div>
             <div className="mt-4 md:mt-0 flex items-center gap-3 flex-wrap">
