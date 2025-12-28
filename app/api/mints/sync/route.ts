@@ -10,13 +10,29 @@ async function canSync(): Promise<{ allowed: boolean; reason?: string; timeRemai
   const currentState = await loadSyncState();
   const now = Date.now();
   const twoMinutes = 2 * 60 * 1000; // 2 minutes en millisecondes
+  const fiveMinutes = 5 * 60 * 1000; // 5 minutes en millisecondes
   
-  // Vérifier si une sync est en cours
+  // Si isSyncing est true, vérifier si c'est bloqué depuis trop longtemps
   if (currentState.isSyncing) {
-    return {
-      allowed: false,
-      reason: 'A sync is already in progress',
-    };
+    const syncStartTime = currentState.syncStartTime || currentState.lastSync || now;
+    const timeSinceSyncStart = now - syncStartTime;
+    
+    // Si le sync est bloqué depuis plus de 5 minutes, le réinitialiser et permettre un nouveau sync
+    if (timeSinceSyncStart > fiveMinutes) {
+      console.warn('[canSync] Sync appears to be stuck for more than 5 minutes, resetting');
+      await saveSyncState({
+        ...currentState,
+        isSyncing: false,
+        syncStartTime: undefined,
+      });
+      // Continuer avec la vérification du lastSync
+    } else {
+      // Sync en cours depuis moins de 5 minutes, refuser
+      return {
+        allowed: false,
+        reason: 'A sync is already in progress',
+      };
+    }
   }
   
   // Vérifier si une sync a été effectuée dans les 2 dernières minutes
@@ -88,15 +104,34 @@ export async function POST(request: Request) {
       });
     } catch (error) {
       // En cas d'erreur, réinitialiser le flag
-      await saveSyncState({
-        ...currentState,
-        isSyncing: false,
-        syncStartTime: undefined,
-      });
+      try {
+        await saveSyncState({
+          ...currentState,
+          isSyncing: false,
+          syncStartTime: undefined,
+        });
+      } catch (saveError) {
+        console.error('Error resetting sync state:', saveError);
+      }
       throw error;
     }
   } catch (error: any) {
-    console.error('Error syncing mints:', error);
+    console.error('Error syncing mints (POST):', error);
+    
+    // S'assurer que isSyncing est réinitialisé même en cas d'erreur inattendue
+    try {
+      const currentState = await loadSyncState();
+      if (currentState.isSyncing) {
+        await saveSyncState({
+          ...currentState,
+          isSyncing: false,
+          syncStartTime: undefined,
+        });
+      }
+    } catch (resetError) {
+      console.error('Error resetting sync state in catch block:', resetError);
+    }
+    
     return NextResponse.json(
       { error: error?.message || 'Failed to sync mints' },
       { status: 500 }
@@ -157,15 +192,34 @@ export async function GET(request: Request) {
       });
     } catch (error) {
       // En cas d'erreur, réinitialiser le flag
-      await saveSyncState({
-        ...currentState,
-        isSyncing: false,
-        syncStartTime: undefined,
-      });
+      try {
+        await saveSyncState({
+          ...currentState,
+          isSyncing: false,
+          syncStartTime: undefined,
+        });
+      } catch (saveError) {
+        console.error('Error resetting sync state:', saveError);
+      }
       throw error;
     }
   } catch (error: any) {
-    console.error('Error syncing mints:', error);
+    console.error('Error syncing mints (GET):', error);
+    
+    // S'assurer que isSyncing est réinitialisé même en cas d'erreur inattendue
+    try {
+      const currentState = await loadSyncState();
+      if (currentState.isSyncing) {
+        await saveSyncState({
+          ...currentState,
+          isSyncing: false,
+          syncStartTime: undefined,
+        });
+      }
+    } catch (resetError) {
+      console.error('Error resetting sync state in catch block:', resetError);
+    }
+    
     return NextResponse.json(
       { error: error?.message || 'Failed to sync mints' },
       { status: 500 }
