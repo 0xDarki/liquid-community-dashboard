@@ -16,7 +16,7 @@ export default function Dashboard() {
   const [lastSyncTime, setLastSyncTime] = useState<Date | null>(null);
   const [timeUntilNextSync, setTimeUntilNextSync] = useState<number>(0);
   const [currentPage, setCurrentPage] = useState(1);
-  const [transactionsPerPage] = useState(50);
+  const [transactionsPerPage] = useState(20);
 
   const fetchData = async () => {
     setLoading(true);
