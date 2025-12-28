@@ -5,14 +5,11 @@ import StatsCard from '@/components/StatsCard';
 import TransactionTable from '@/components/TransactionTable';
 import StatsChart from '@/components/StatsChart';
 import ModernChart from '@/components/ModernChart';
-import type { MintTransaction, TransferTransaction, PoolStats } from '@/lib/solana';
-import type { HistoricalDataPoint } from '@/lib/storage';
+import type { MintTransaction, PoolStats } from '@/lib/solana';
 
 export default function Dashboard() {
   const [stats, setStats] = useState<PoolStats | null>(null);
   const [mintTransactions, setMintTransactions] = useState<MintTransaction[]>([]);
-  const [transferTransactions, setTransferTransactions] = useState<TransferTransaction[]>([]);
-  const [history, setHistory] = useState<HistoricalDataPoint[]>([]);
   const [averageStats, setAverageStats] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [lastUpdate, setLastUpdate] = useState<Date>(new Date());
@@ -23,66 +20,119 @@ export default function Dashboard() {
   const [currentPage, setCurrentPage] = useState(1);
   const [transactionsPerPage] = useState(20);
 
+  // Calculer les stats depuis les transactions mints
+  const calculateStatsFromMints = (mints: MintTransaction[]): PoolStats => {
+    const totalSolAdded = mints.reduce((sum, m) => sum + m.solAmount, 0);
+    const totalTokensAdded = mints.reduce((sum, m) => sum + m.tokenAmount, 0);
+    
+    return {
+      solBalance: 0, // Sera mis à jour par l'API stats si disponible
+      tokenBalance: 0,
+      totalMints: mints.length,
+      totalTransfers: 0,
+      totalSolAdded,
+      totalTokensAdded,
+      totalTokensTransferred: 0,
+      tokenPrice: null,
+      tokenPriceInUsd: null,
+      solPrice: null,
+      tokenPriceSol: null,
+      tokenPriceToken: null,
+      totalLiquidity: null,
+    };
+  };
+
+  // Calculer les stats moyennes depuis les transactions mints
+  const calculateAverageStats = (mints: MintTransaction[]) => {
+    const now = Math.floor(Date.now() / 1000);
+    const twentyFourHoursAgo = now - (24 * 60 * 60);
+    const recentMints = mints.filter(m => m.timestamp >= twentyFourHoursAgo);
+    
+    if (recentMints.length === 0) {
+      return null;
+    }
+    
+    const totalSolAdded = recentMints.reduce((sum, m) => sum + m.solAmount, 0);
+    const totalTokensAdded = recentMints.reduce((sum, m) => sum + m.tokenAmount, 0);
+    const firstTransactionTime = Math.min(...recentMints.map(m => m.timestamp));
+    const lastTransactionTime = Math.max(...recentMints.map(m => m.timestamp));
+    const hoursElapsed = Math.max(1, (lastTransactionTime - firstTransactionTime) / 3600);
+    
+    return {
+      success: true,
+      totalTransactions: recentMints.length,
+      totalSolAdded,
+      totalTokensAdded,
+      averageSolPerHour24h: totalSolAdded / 24,
+      averageTokensPerHour24h: totalTokensAdded / 24,
+      hoursElapsed,
+    };
+  };
+
   const fetchData = async () => {
     setLoading(true);
     setError(null);
     try {
-      // Récupérer toutes les transactions MINT stockées
-      // Ne pas synchroniser automatiquement pour éviter trop de requêtes
-      // La synchronisation peut être faite manuellement via /api/mints/sync
-      const [statsRes, mintsRes, transfersRes, historyRes, averageRes, syncStateRes] = await Promise.all([
-        fetch('/api/stats'),
+      // Charger seulement les mints et le sync state (tout est dans mints.json)
+      const [mintsRes, syncStateRes] = await Promise.all([
         fetch('/api/mints?limit=0'), // 0 = toutes les transactions stockées
-        fetch('/api/transfers?limit=20'), // Réduit à 20 pour les transfers
-        fetch('/api/history'),
-        fetch('/api/stats/average'),
         fetch('/api/sync-state'), // Récupérer l'état de synchronisation partagé
       ]);
 
       // Vérifier les erreurs de connexion
-      if (!statsRes.ok || !mintsRes.ok || !transfersRes.ok) {
-        // Vérifier si c'est une erreur de connexion
-        if (statsRes.status === 0 || mintsRes.status === 0 || transfersRes.status === 0) {
+      if (!mintsRes.ok) {
+        if (mintsRes.status === 0) {
           throw new Error('CONNECTION_REFUSED');
         }
-        
-        // Vérifier les erreurs 429
-        if (statsRes.status === 429 || mintsRes.status === 429 || transfersRes.status === 429) {
+        if (mintsRes.status === 429) {
           throw new Error('429');
         }
-        
-        // Vérifier les erreurs 503
-        if (statsRes.status === 503 || mintsRes.status === 503 || transfersRes.status === 503) {
+        if (mintsRes.status === 503) {
           throw new Error('503');
         }
-        
-        const errorData = await statsRes.json().catch(() => ({}));
+        const errorData = await mintsRes.json().catch(() => ({}));
         throw new Error(errorData.error || 'Failed to fetch data from API');
       }
 
-      const [poolStats, mints, transfers, historyData, averageData, syncState] = await Promise.all([
-        statsRes.json(),
+      const [mints, syncState] = await Promise.all([
         mintsRes.json(),
-        transfersRes.json(),
-        historyRes.json().catch(() => []), // Si l'API history échoue, utiliser un tableau vide
-        averageRes.json().catch(() => null), // Si l'API average échoue, utiliser null
-        syncStateRes.json().catch(() => ({ lastSync: 0, isSyncing: false })), // Si l'API sync-state échoue, utiliser des valeurs par défaut
+        syncStateRes.json().catch(() => ({ lastSync: 0, isSyncing: false })),
       ]);
 
-      setStats(poolStats);
+      // Calculer les stats depuis les mints
+      const calculatedStats = calculateStatsFromMints(mints);
+      const calculatedAverage = calculateAverageStats(mints);
+
       setMintTransactions(mints);
-      setTransferTransactions(transfers);
-      setHistory(historyData);
-      setAverageStats(averageData);
       setLastUpdate(new Date());
       
       // Mettre à jour le lastSyncTime depuis le sync state partagé
       if (syncState && syncState.lastSync && syncState.lastSync > 0) {
         setLastSyncTime(new Date(syncState.lastSync));
       } else {
-        // Si pas de sync state, vérifier dans le useEffect qui se charge aussi
         setLastSyncTime(null);
       }
+
+      // Charger les stats avec prix en arrière-plan (non bloquant)
+      fetch('/api/stats')
+        .then(res => res.json())
+        .then(poolStats => {
+          // Fusionner les stats calculées avec les stats de l'API (prix, balances)
+          setStats({
+            ...calculatedStats,
+            ...poolStats,
+            totalMints: calculatedStats.totalMints,
+            totalSolAdded: calculatedStats.totalSolAdded,
+            totalTokensAdded: calculatedStats.totalTokensAdded,
+          });
+        })
+        .catch(err => {
+          console.error('Error fetching stats (non-blocking):', err);
+          // Utiliser les stats calculées si l'API échoue
+          setStats(calculatedStats);
+        });
+
+      setAverageStats(calculatedAverage);
     } catch (error) {
       console.error('Error fetching data:', error);
       if (error instanceof Error) {
