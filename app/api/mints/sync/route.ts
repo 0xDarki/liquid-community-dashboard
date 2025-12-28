@@ -10,7 +10,7 @@ async function canSync(): Promise<{ allowed: boolean; reason?: string; timeRemai
   const currentState = await loadSyncState();
   const now = Date.now();
   const twoMinutes = 2 * 60 * 1000; // 2 minutes en millisecondes
-  const fiveMinutes = 5 * 60 * 1000; // 5 minutes en millisecondes
+  const threeMinutes = 3 * 60 * 1000; // 3 minutes en millisecondes (seuil pour réinitialiser un sync bloqué)
   
   console.log('[canSync] Current state:', {
     isSyncing: currentState.isSyncing,
@@ -27,9 +27,14 @@ async function canSync(): Promise<{ allowed: boolean; reason?: string; timeRemai
     
     console.log('[canSync] Sync in progress, time since start:', Math.floor(timeSinceSyncStart / 1000), 'seconds');
     
-    // Si le sync est bloqué depuis plus de 5 minutes, le réinitialiser et permettre un nouveau sync
-    if (timeSinceSyncStart > fiveMinutes) {
-      console.warn('[canSync] Sync appears to be stuck for more than 5 minutes, resetting');
+    // Si le sync est bloqué depuis plus de 3 minutes OU si lastSync est 0 et que ça fait plus de 2 minutes,
+    // le réinitialiser et permettre un nouveau sync
+    // (Si lastSync est 0, c'est qu'une sync précédente n'a jamais été complétée)
+    const isStuck = timeSinceSyncStart > threeMinutes || 
+                     (currentState.lastSync === 0 && timeSinceSyncStart > twoMinutes);
+    
+    if (isStuck) {
+      console.warn('[canSync] Sync appears to be stuck, resetting. Time since start:', Math.floor(timeSinceSyncStart / 1000), 'seconds, lastSync:', currentState.lastSync);
       await saveSyncState({
         ...currentState,
         isSyncing: false,
@@ -37,7 +42,7 @@ async function canSync(): Promise<{ allowed: boolean; reason?: string; timeRemai
       });
       // Continuer avec la vérification du lastSync
     } else {
-      // Sync en cours depuis moins de 5 minutes, refuser
+      // Sync en cours depuis moins de 3 minutes, refuser
       console.log('[canSync] Sync in progress, refusing new sync');
       return {
         allowed: false,
