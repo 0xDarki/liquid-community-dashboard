@@ -161,6 +161,9 @@ export default function Dashboard() {
       setMintTransactions(mints);
       setLastUpdate(new Date());
       
+      // Définir immédiatement les stats calculées (sans attendre l'API)
+      setStats(calculatedStats);
+      
       // Mettre à jour le lastSyncTime depuis le sync state partagé
       if (syncState && syncState.lastSync && syncState.lastSync > 0) {
         const timestamp = syncState.lastSync;
@@ -195,8 +198,7 @@ export default function Dashboard() {
         })
         .catch(err => {
           console.error('Error fetching stats (non-blocking):', err);
-          // Utiliser les stats calculées si l'API échoue
-          setStats(calculatedStats);
+          // Les stats calculées sont déjà définies, pas besoin de les redéfinir
         });
 
       setAverageStats(calculatedAverage);
