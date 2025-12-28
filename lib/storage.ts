@@ -1,10 +1,15 @@
 import { promises as fs } from 'fs';
 import path from 'path';
 import type { MintTransaction } from './solana';
+import { put, head, list } from '@vercel/blob';
 
 const STORAGE_DIR = path.join(process.cwd(), 'data');
 const MINTS_FILE = path.join(STORAGE_DIR, 'mints.json');
 const SYNC_STATE_FILE = path.join(STORAGE_DIR, 'sync-state.json');
+
+// Blob storage keys
+const BLOB_MINTS_KEY = 'mints.json';
+const BLOB_SYNC_STATE_KEY = 'sync-state.json';
 
 // Interface pour l'état de synchronisation
 interface SyncState {
@@ -12,7 +17,12 @@ interface SyncState {
   isSyncing: boolean; // Indique si une synchronisation est en cours
 }
 
-// S'assurer que le dossier data existe
+// Détecter si on est sur Vercel (utilise Blob Storage) ou en local (utilise filesystem)
+const useBlobStorage = () => {
+  return !!process.env.BLOB_READ_WRITE_TOKEN && process.env.VERCEL === '1';
+};
+
+// S'assurer que le dossier data existe (pour le mode local)
 async function ensureDataDir() {
   try {
     await fs.mkdir(STORAGE_DIR, { recursive: true });
@@ -21,15 +31,108 @@ async function ensureDataDir() {
   }
 }
 
-// Charger les mints depuis le fichier
-export async function loadStoredMints(): Promise<MintTransaction[]> {
+// ========== FONCTIONS BLOB STORAGE (Vercel) ==========
+
+// Charger les mints depuis Vercel Blob
+async function loadMintsFromBlob(): Promise<MintTransaction[]> {
+  try {
+    // Vérifier si le blob existe
+    const blobInfo = await head(BLOB_MINTS_KEY).catch(() => null);
+    if (!blobInfo) {
+      // Le fichier n'existe pas encore, retourner un tableau vide
+      return [];
+    }
+    
+    // Récupérer le contenu via l'URL
+    const response = await fetch(blobInfo.url);
+    if (!response.ok) {
+      if (response.status === 404) {
+        return [];
+      }
+      throw new Error(`Failed to fetch blob: ${response.statusText}`);
+    }
+    
+    const text = await response.text();
+    return JSON.parse(text);
+  } catch (error: any) {
+    if (error.name === 'BlobNotFoundError' || error.status === 404) {
+      return [];
+    }
+    console.error('Error loading mints from blob:', error);
+    return [];
+  }
+}
+
+// Sauvegarder les mints dans Vercel Blob
+async function saveMintsToBlob(mints: MintTransaction[]): Promise<void> {
+  try {
+    const sorted = mints.sort((a, b) => b.timestamp - a.timestamp);
+    const content = JSON.stringify(sorted, null, 2);
+    await put(BLOB_MINTS_KEY, content, {
+      access: 'public',
+      contentType: 'application/json',
+      addRandomSuffix: false, // Garder le même nom de fichier
+      allowOverwrite: true, // Permettre l'écrasement
+    });
+    console.log(`[saveMintsToBlob] Successfully saved ${mints.length} transactions to blob`);
+  } catch (error) {
+    console.error('Error saving mints to blob:', error);
+    throw error;
+  }
+}
+
+// Charger l'état de synchronisation depuis Vercel Blob
+async function loadSyncStateFromBlob(): Promise<SyncState> {
+  try {
+    const blobInfo = await head(BLOB_SYNC_STATE_KEY).catch(() => null);
+    if (!blobInfo) {
+      return { lastSync: 0, isSyncing: false };
+    }
+    
+    const response = await fetch(blobInfo.url);
+    if (!response.ok) {
+      if (response.status === 404) {
+        return { lastSync: 0, isSyncing: false };
+      }
+      throw new Error(`Failed to fetch sync state: ${response.statusText}`);
+    }
+    
+    const text = await response.text();
+    return JSON.parse(text);
+  } catch (error: any) {
+    if (error.name === 'BlobNotFoundError' || error.status === 404) {
+      return { lastSync: 0, isSyncing: false };
+    }
+    console.error('Error loading sync state from blob:', error);
+    return { lastSync: 0, isSyncing: false };
+  }
+}
+
+// Sauvegarder l'état de synchronisation dans Vercel Blob
+async function saveSyncStateToBlob(state: SyncState): Promise<void> {
+  try {
+    const content = JSON.stringify(state, null, 2);
+    await put(BLOB_SYNC_STATE_KEY, content, {
+      access: 'public',
+      contentType: 'application/json',
+      addRandomSuffix: false,
+      allowOverwrite: true,
+    });
+  } catch (error) {
+    console.error('Error saving sync state to blob:', error);
+  }
+}
+
+// ========== FONCTIONS FILESYSTEM (Local) ==========
+
+// Charger les mints depuis le fichier local
+async function loadMintsFromFile(): Promise<MintTransaction[]> {
   try {
     await ensureDataDir();
     const data = await fs.readFile(MINTS_FILE, 'utf-8');
     return JSON.parse(data);
   } catch (error: any) {
     if (error.code === 'ENOENT') {
-      // Le fichier n'existe pas encore, retourner un tableau vide
       return [];
     }
     console.error('Error loading stored mints:', error);
@@ -37,19 +140,77 @@ export async function loadStoredMints(): Promise<MintTransaction[]> {
   }
 }
 
-// Sauvegarder les mints dans le fichier
-export async function saveStoredMints(mints: MintTransaction[]): Promise<void> {
+// Sauvegarder les mints dans le fichier local
+async function saveMintsToFile(mints: MintTransaction[]): Promise<void> {
   try {
-    console.log(`[saveStoredMints] Ensuring data directory exists...`);
     await ensureDataDir();
-    console.log(`[saveStoredMints] Data directory ready, saving ${mints.length} transactions to ${MINTS_FILE}`);
-    // Trier par timestamp décroissant
     const sorted = mints.sort((a, b) => b.timestamp - a.timestamp);
     await fs.writeFile(MINTS_FILE, JSON.stringify(sorted, null, 2), 'utf-8');
-    console.log(`[saveStoredMints] Successfully wrote ${mints.length} transactions to file`);
+    console.log(`[saveMintsToFile] Successfully wrote ${mints.length} transactions to file`);
   } catch (error) {
     console.error('Error saving stored mints:', error);
     throw error;
+  }
+}
+
+// Charger l'état de synchronisation depuis le fichier local
+async function loadSyncStateFromFile(): Promise<SyncState> {
+  try {
+    await ensureDataDir();
+    const data = await fs.readFile(SYNC_STATE_FILE, 'utf-8');
+    return JSON.parse(data);
+  } catch (error: any) {
+    if (error.code === 'ENOENT') {
+      return { lastSync: 0, isSyncing: false };
+    }
+    console.error('Error loading sync state:', error);
+    return { lastSync: 0, isSyncing: false };
+  }
+}
+
+// Sauvegarder l'état de synchronisation dans le fichier local
+async function saveSyncStateToFile(state: SyncState): Promise<void> {
+  try {
+    await ensureDataDir();
+    await fs.writeFile(SYNC_STATE_FILE, JSON.stringify(state, null, 2), 'utf-8');
+  } catch (error) {
+    console.error('Error saving sync state:', error);
+  }
+}
+
+// ========== FONCTIONS UNIFIÉES (utilisent Blob ou File selon l'environnement) ==========
+
+// Charger les mints depuis le stockage (Blob ou File)
+export async function loadStoredMints(): Promise<MintTransaction[]> {
+  if (useBlobStorage()) {
+    return loadMintsFromBlob();
+  }
+  return loadMintsFromFile();
+}
+
+// Sauvegarder les mints dans le stockage (Blob ou File)
+export async function saveStoredMints(mints: MintTransaction[]): Promise<void> {
+  if (useBlobStorage()) {
+    await saveMintsToBlob(mints);
+  } else {
+    await saveMintsToFile(mints);
+  }
+}
+
+// Charger l'état de synchronisation
+async function loadSyncState(): Promise<SyncState> {
+  if (useBlobStorage()) {
+    return loadSyncStateFromBlob();
+  }
+  return loadSyncStateFromFile();
+}
+
+// Sauvegarder l'état de synchronisation
+async function saveSyncState(state: SyncState): Promise<void> {
+  if (useBlobStorage()) {
+    await saveSyncStateToBlob(state);
+  } else {
+    await saveSyncStateToFile(state);
   }
 }
 
@@ -84,31 +245,6 @@ export async function getAllStoredMints(): Promise<MintTransaction[]> {
 export async function getStoredMints(limit: number = 50): Promise<MintTransaction[]> {
   const all = await loadStoredMints();
   return all.slice(0, limit);
-}
-
-// Charger l'état de synchronisation
-async function loadSyncState(): Promise<SyncState> {
-  try {
-    await ensureDataDir();
-    const data = await fs.readFile(SYNC_STATE_FILE, 'utf-8');
-    return JSON.parse(data);
-  } catch (error: any) {
-    if (error.code === 'ENOENT') {
-      return { lastSync: 0, isSyncing: false };
-    }
-    console.error('Error loading sync state:', error);
-    return { lastSync: 0, isSyncing: false };
-  }
-}
-
-// Sauvegarder l'état de synchronisation
-async function saveSyncState(state: SyncState): Promise<void> {
-  try {
-    await ensureDataDir();
-    await fs.writeFile(SYNC_STATE_FILE, JSON.stringify(state, null, 2), 'utf-8');
-  } catch (error) {
-    console.error('Error saving sync state:', error);
-  }
 }
 
 // Vérifier si une synchronisation est nécessaire (toutes les 2 minutes)
@@ -173,6 +309,7 @@ export async function syncMints(limit: number = 50, getAll: boolean = false): Pr
     
     console.log(`[syncMints] Starting sync with limit=${limit}, getAll=${getAll}`);
     console.log(`[syncMints] Already have ${existingMints.length} stored transactions (using as cache)`);
+    console.log(`[syncMints] Storage mode: ${useBlobStorage() ? 'Vercel Blob' : 'Local filesystem'}`);
     
     // Si getAll=true, récupérer seulement les 20 dernières transactions (pour synchronisation rapide)
     // Sinon, utiliser la limite fournie
@@ -194,7 +331,7 @@ export async function syncMints(limit: number = 50, getAll: boolean = false): Pr
       // Fusionner avec les transactions existantes (les nouvelles sont déjà les plus récentes)
       // Trier par timestamp pour maintenir l'ordre
       const updated = [...existingMints, ...toAdd].sort((a, b) => b.timestamp - a.timestamp);
-      console.log(`[syncMints] Saving ${updated.length} total transactions to file...`);
+      console.log(`[syncMints] Saving ${updated.length} total transactions...`);
       await saveStoredMints(updated);
       console.log(`[syncMints] Successfully saved ${updated.length} transactions`);
       return { added: toAdd.length, total: updated.length };
@@ -209,4 +346,3 @@ export async function syncMints(limit: number = 50, getAll: boolean = false): Pr
     return { added: 0, total: existing.length };
   }
 }
-

@@ -84,12 +84,25 @@ vercel env add NEXT_PUBLIC_SOLANA_RPC_URL
 
 ### Important Notes for Vercel
 
-⚠️ **Data Persistence**: The `data/` folder is stored locally and will be reset on each deployment. For production, consider:
-- Using a database (PostgreSQL, MongoDB, etc.)
-- Using Vercel KV or Vercel Blob Storage
-- Using an external storage service
+✅ **Data Persistence**: The project uses **Vercel Blob Storage** for persistent data storage on Vercel. The `mints.json` file is automatically stored in Vercel Blob when deployed.
 
-The current implementation uses file-based storage which works for development but is not persistent on Vercel's serverless functions.
+**Setup Vercel Blob Storage:**
+
+1. Go to your Vercel project dashboard
+2. Navigate to **Storage** tab
+3. Click **Create Database** → Select **Blob**
+4. Create a new Blob store (e.g., "MintsStore")
+5. Select the environments where you want to include the read-write token
+6. Vercel will automatically add `BLOB_READ_WRITE_TOKEN` environment variable
+
+**For Local Development:**
+
+To use Blob Storage locally, sync the environment variables:
+```bash
+vercel env pull
+```
+
+The code automatically detects if it's running on Vercel (with `BLOB_READ_WRITE_TOKEN` and `VERCEL=1`) and uses Blob Storage, otherwise falls back to local filesystem (`data/` folder) for development.
 
 ## Configuration
 
