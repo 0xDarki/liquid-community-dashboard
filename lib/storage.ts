@@ -810,9 +810,10 @@ export async function syncMints(limit: number = 50, getAll: boolean = false): Pr
       console.log(`[syncMints] Successfully saved ${updated.length} transactions`);
       
       // Rafraîchir le prix après la synchronisation
+      let priceData: any = null;
       try {
         const { getTokenPrice } = await import('./solana');
-        const priceData = await getTokenPrice();
+        priceData = await getTokenPrice();
         if (priceData) {
           const price: TokenPrice = {
             price: priceData.price,
@@ -830,15 +831,38 @@ export async function syncMints(limit: number = 50, getAll: boolean = false): Pr
         // Ne pas faire échouer la sync si le prix ne peut pas être mis à jour
       }
       
+      // Mettre à jour les données historiques (vérifie automatiquement si 12h se sont écoulées)
+      try {
+        const totalSolAdded = updated.reduce((sum, m) => sum + m.solAmount, 0);
+        const totalTokensAdded = updated.reduce((sum, m) => sum + m.tokenAmount, 0);
+        const totalLiquidity = priceData?.solPrice && priceData?.priceInUsd
+          ? (totalSolAdded * priceData.solPrice) + (totalTokensAdded * priceData.priceInUsd)
+          : null;
+        
+        await addHistoricalDataPoint({
+          totalSolAdded,
+          totalTokensAdded,
+          totalMints: updated.length,
+          tokenPrice: priceData?.price ?? null,
+          tokenPriceInUsd: priceData?.priceInUsd ?? null,
+          solPrice: priceData?.solPrice ?? null,
+          totalLiquidity,
+        });
+      } catch (historyError) {
+        console.error('[syncMints] Error adding historical data point:', historyError);
+        // Ne pas faire échouer la sync si l'historique ne peut pas être mis à jour
+      }
+      
       return { added: toAdd.length, total: updated.length };
     }
     
     console.log(`[syncMints] No new transactions to add`);
     
     // Même s'il n'y a pas de nouvelles transactions, mettre à jour le prix
+    let priceData: any = null;
     try {
       const { getTokenPrice } = await import('./solana');
-      const priceData = await getTokenPrice();
+      priceData = await getTokenPrice();
       if (priceData) {
         const price: TokenPrice = {
           price: priceData.price,
@@ -854,6 +878,28 @@ export async function syncMints(limit: number = 50, getAll: boolean = false): Pr
     } catch (priceError) {
       console.error('[syncMints] Error updating price:', priceError);
       // Ne pas faire échouer la sync si le prix ne peut pas être mis à jour
+    }
+    
+    // Mettre à jour les données historiques (vérifie automatiquement si 12h se sont écoulées)
+    try {
+      const totalSolAdded = existingMints.reduce((sum, m) => sum + m.solAmount, 0);
+      const totalTokensAdded = existingMints.reduce((sum, m) => sum + m.tokenAmount, 0);
+      const totalLiquidity = priceData?.solPrice && priceData?.priceInUsd
+        ? (totalSolAdded * priceData.solPrice) + (totalTokensAdded * priceData.priceInUsd)
+        : null;
+      
+      await addHistoricalDataPoint({
+        totalSolAdded,
+        totalTokensAdded,
+        totalMints: existingMints.length,
+        tokenPrice: priceData?.price ?? null,
+        tokenPriceInUsd: priceData?.priceInUsd ?? null,
+        solPrice: priceData?.solPrice ?? null,
+        totalLiquidity,
+      });
+    } catch (historyError) {
+      console.error('[syncMints] Error adding historical data point:', historyError);
+      // Ne pas faire échouer la sync si l'historique ne peut pas être mis à jour
     }
     
     return { added: 0, total: existingMints.length };
