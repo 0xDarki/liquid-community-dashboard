@@ -561,64 +561,106 @@ export default function ModernChart({ transactions }: ModernChartProps) {
         const txRate = totalSol > 0 ? last24hTransactions.length / hoursElapsed : 0;
         
         return (
-          <div className="bg-white dark:bg-gray-800 rounded-xl shadow-lg p-3 border border-gray-200 dark:border-gray-700">
-            <h3 className="text-base font-semibold text-gray-900 dark:text-white mb-3">
-              Average Liquidity Addition (Last 24 Hours)
-            </h3>
+          <div className="bg-white dark:bg-gray-800 rounded-xl shadow-lg p-4 border border-gray-200 dark:border-gray-700">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
+                Average Liquidity Addition (Last 24 Hours)
+              </h3>
+              <div className="px-2 py-1 bg-blue-50 dark:bg-blue-900/20 rounded-md">
+                <span className="text-xs font-medium text-blue-600 dark:text-blue-400">
+                  24h Period
+                </span>
+              </div>
+            </div>
             
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
               {/* Average SOL/Hour */}
-              <div className="space-y-1">
-                <div className="text-xs font-medium text-gray-500 dark:text-gray-400">
-                  Average SOL/Hour
+              <div className="bg-gradient-to-br from-blue-50 to-blue-100 dark:from-blue-900/20 dark:to-blue-800/20 rounded-lg p-3 border border-blue-200 dark:border-blue-800/30">
+                <div className="flex items-center gap-2 mb-2">
+                  <div className="w-2 h-2 rounded-full bg-blue-500"></div>
+                  <div className="text-xs font-semibold text-blue-700 dark:text-blue-300 uppercase tracking-wide">
+                    Average SOL/Hour
+                  </div>
                 </div>
-                <div className="text-xl font-bold text-gray-900 dark:text-white">
-                  {avgSolPerHour.toFixed(6)} SOL
+                <div className="text-2xl font-bold text-blue-900 dark:text-blue-100 mb-1">
+                  {avgSolPerHour.toFixed(6)}
                 </div>
-                <div className="text-xs text-gray-600 dark:text-gray-400">
-                  Total: {totalSol.toFixed(4)} SOL
+                <div className="text-xs font-medium text-blue-600 dark:text-blue-400 mb-1">
+                  SOL
                 </div>
-                <div className="text-xs text-gray-500 dark:text-gray-500">
-                  ({last24hTransactions.length} transactions)
+                <div className="pt-2 border-t border-blue-200 dark:border-blue-800/30 mt-2">
+                  <div className="text-xs text-blue-600 dark:text-blue-400">
+                    Total: <span className="font-semibold">{totalSol.toFixed(4)} SOL</span>
+                  </div>
+                  <div className="text-xs text-blue-500 dark:text-blue-500 mt-0.5">
+                    {last24hTransactions.length} transactions
+                  </div>
                 </div>
               </div>
               
               {/* Average $LIQUID/Hour */}
-              <div className="space-y-1">
-                <div className="text-xs font-medium text-gray-500 dark:text-gray-400">
-                  Average $LIQUID/Hour
+              <div className="bg-gradient-to-br from-green-50 to-green-100 dark:from-green-900/20 dark:to-green-800/20 rounded-lg p-3 border border-green-200 dark:border-green-800/30">
+                <div className="flex items-center gap-2 mb-2">
+                  <div className="w-2 h-2 rounded-full bg-green-500"></div>
+                  <div className="text-xs font-semibold text-green-700 dark:text-green-300 uppercase tracking-wide">
+                    Average $LIQUID/Hour
+                  </div>
                 </div>
-                <div className="text-xl font-bold text-gray-900 dark:text-white">
+                <div className="text-2xl font-bold text-green-900 dark:text-green-100 mb-1">
                   {avgTokensPerHour.toLocaleString('en-US', { maximumFractionDigits: 1 })}
                 </div>
-                <div className="text-xs text-gray-600 dark:text-gray-400">
-                  Total: {totalTokens.toLocaleString('en-US', { maximumFractionDigits: 1 })} $LIQUID
+                <div className="text-xs font-medium text-green-600 dark:text-green-400 mb-1">
+                  $LIQUID
+                </div>
+                <div className="pt-2 border-t border-green-200 dark:border-green-800/30 mt-2">
+                  <div className="text-xs text-green-600 dark:text-green-400">
+                    Total: <span className="font-semibold">{totalTokens.toLocaleString('en-US', { maximumFractionDigits: 1 })}</span>
+                  </div>
+                  <div className="text-xs text-green-500 dark:text-green-500 mt-0.5">
+                    $LIQUID
+                  </div>
                 </div>
               </div>
               
               {/* Transactions (24h) */}
-              <div className="space-y-1">
-                <div className="text-xs font-medium text-gray-500 dark:text-gray-400">
-                  Transactions (24h)
+              <div className="bg-gradient-to-br from-purple-50 to-purple-100 dark:from-purple-900/20 dark:to-purple-800/20 rounded-lg p-3 border border-purple-200 dark:border-purple-800/30">
+                <div className="flex items-center gap-2 mb-2">
+                  <div className="w-2 h-2 rounded-full bg-purple-500"></div>
+                  <div className="text-xs font-semibold text-purple-700 dark:text-purple-300 uppercase tracking-wide">
+                    Transactions (24h)
+                  </div>
                 </div>
-                <div className="text-xl font-bold text-gray-900 dark:text-white">
+                <div className="text-2xl font-bold text-purple-900 dark:text-purple-100 mb-1">
                   {last24hTransactions.length}
                 </div>
-                <div className="text-xs text-gray-600 dark:text-gray-400">
-                  Over {hoursElapsedDisplay} hours
+                <div className="text-xs font-medium text-purple-600 dark:text-purple-400 mb-1">
+                  Total
+                </div>
+                <div className="pt-2 border-t border-purple-200 dark:border-purple-800/30 mt-2">
+                  <div className="text-xs text-purple-600 dark:text-purple-400">
+                    Over <span className="font-semibold">{hoursElapsedDisplay} hours</span>
+                  </div>
                 </div>
               </div>
               
               {/* Rate */}
-              <div className="space-y-1">
-                <div className="text-xs font-medium text-gray-500 dark:text-gray-400">
-                  Rate
+              <div className="bg-gradient-to-br from-orange-50 to-orange-100 dark:from-orange-900/20 dark:to-orange-800/20 rounded-lg p-3 border border-orange-200 dark:border-orange-800/30">
+                <div className="flex items-center gap-2 mb-2">
+                  <div className="w-2 h-2 rounded-full bg-orange-500"></div>
+                  <div className="text-xs font-semibold text-orange-700 dark:text-orange-300 uppercase tracking-wide">
+                    Rate
+                  </div>
                 </div>
-                <div className="text-xl font-bold text-gray-900 dark:text-white">
-                  {txRate.toFixed(2)}/hour
+                <div className="text-2xl font-bold text-orange-900 dark:text-orange-100 mb-1">
+                  {txRate.toFixed(2)}
                 </div>
-                <div className="text-xs text-gray-600 dark:text-gray-400">
-                  {last24hTransactions.length} transactions in 24h
+                <div className="text-xs font-medium text-orange-600 dark:text-orange-400 mb-1">
+                  per hour
+                </div>
+                <div className="pt-2 border-t border-orange-200 dark:border-orange-800/30 mt-2">
+                  <div className="text-xs text-orange-600 dark:text-orange-400">
+                    <span className="font-semibold">{last24hTransactions.length}</span> transactions in 24h
+                  </div>
                 </div>
               </div>
             </div>
