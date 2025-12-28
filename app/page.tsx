@@ -16,6 +16,7 @@ export default function Dashboard() {
   const [syncing, setSyncing] = useState(false);
   const [lastSyncTime, setLastSyncTime] = useState<Date | null>(null);
   const [timeUntilNextSync, setTimeUntilNextSync] = useState<number>(0);
+  const [isSyncInProgress, setIsSyncInProgress] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
   const [transactionsPerPage] = useState(20);
 
@@ -167,17 +168,29 @@ export default function Dashboard() {
         const res = await fetch('/api/sync-state');
         if (res.ok) {
           const syncState = await res.json();
-          console.log('Sync state received:', syncState); // Debug
-          if (syncState && syncState.lastSync && syncState.lastSync > 0) {
-            const now = Date.now();
-            const lastSync = syncState.lastSync;
-            const twoMinutes = 2 * 60 * 1000; // 2 minutes en millisecondes
-            const timeElapsed = now - lastSync;
-            const timeRemaining = Math.max(0, twoMinutes - timeElapsed);
-            setTimeUntilNextSync(timeRemaining);
+          
+          // Mettre à jour l'état de sync en cours
+          setIsSyncInProgress(syncState.isSyncing || false);
+          
+          // Si une sync est en cours, bloquer le bouton
+          if (syncState.isSyncing) {
+            setTimeUntilNextSync(Infinity); // Bloquer indéfiniment tant que sync en cours
+          } else if (syncState && syncState.lastSync && syncState.lastSync > 0) {
+            // Utiliser les données du serveur si disponibles
+            if (syncState.timeRemaining !== undefined) {
+              setTimeUntilNextSync(syncState.timeRemaining * 1000); // Convertir en millisecondes
+            } else {
+              // Calculer localement si timeRemaining n'est pas disponible
+              const now = Date.now();
+              const lastSync = syncState.lastSync;
+              const twoMinutes = 2 * 60 * 1000; // 2 minutes en millisecondes
+              const timeElapsed = now - lastSync;
+              const timeRemaining = Math.max(0, twoMinutes - timeElapsed);
+              setTimeUntilNextSync(timeRemaining);
+            }
             
             // Mettre à jour le lastSyncTime local
-            setLastSyncTime(new Date(lastSync));
+            setLastSyncTime(new Date(syncState.lastSync));
           } else {
             setTimeUntilNextSync(0);
             // Ne pas réinitialiser lastSyncTime si on a déjà une valeur valide
@@ -189,7 +202,7 @@ export default function Dashboard() {
     };
 
     updateCountdown();
-    const interval = setInterval(updateCountdown, 5000); // Mettre à jour toutes les 5 secondes
+    const interval = setInterval(updateCountdown, 2000); // Mettre à jour toutes les 2 secondes pour plus de réactivité
     return () => clearInterval(interval);
   }, []);
 
