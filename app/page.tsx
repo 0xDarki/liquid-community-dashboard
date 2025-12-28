@@ -505,39 +505,6 @@ export default function Dashboard() {
           </div>
         )}
 
-        {/* Average Stats (Last 24h) */}
-        {averageStats && averageStats.success && (
-          <div className="mb-6">
-            <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-4">
-              Average Liquidity Addition (Last 24 Hours)
-            </h2>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-              <StatsCard
-                title="Average SOL/Hour"
-                value={`${averageStats.averageSolPerHour24h.toFixed(6)} SOL`}
-                subtitle={`Total: ${averageStats.totalSolAdded.toFixed(4)} SOL (${averageStats.totalTransactions} transactions)`}
-              />
-              <StatsCard
-                title="Average $LIQUID/Hour"
-                value={averageStats.averageTokensPerHour24h.toLocaleString('en-US', {
-                  maximumFractionDigits: 2,
-                })}
-                subtitle={`Total: ${averageStats.totalTokensAdded.toLocaleString('en-US', { maximumFractionDigits: 2 })} $LIQUID`}
-              />
-              <StatsCard
-                title="Transactions (24h)"
-                value={averageStats.totalTransactions.toLocaleString('en-US')}
-                subtitle={`Over ${averageStats.hoursElapsed.toFixed(1)} hours`}
-              />
-              <StatsCard
-                title="Rate"
-                value={`${(averageStats.totalTransactions / 24).toFixed(2)}/hour`}
-                subtitle={`${averageStats.totalTransactions} transactions in 24h`}
-              />
-            </div>
-          </div>
-        )}
-
         {/* Modern Chart - 6h intervals */}
         {mintTransactions.length > 0 && (
           <div className="mb-6">
