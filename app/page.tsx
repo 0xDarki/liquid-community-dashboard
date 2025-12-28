@@ -15,6 +15,8 @@ export default function Dashboard() {
   const [syncing, setSyncing] = useState(false);
   const [lastSyncTime, setLastSyncTime] = useState<Date | null>(null);
   const [timeUntilNextSync, setTimeUntilNextSync] = useState<number>(0);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [transactionsPerPage] = useState(50);
 
   const fetchData = async () => {
     setLoading(true);
@@ -224,8 +226,48 @@ export default function Dashboard() {
 
         {/* Transactions */}
         <div className="mb-6">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-xl font-semibold text-gray-900 dark:text-white">
+              Liquidity Addition Transactions
+            </h2>
+            <span className="text-sm text-gray-600 dark:text-gray-400">
+              {mintTransactions.length} transactions found
+            </span>
+          </div>
+          
+          {/* Pagination Controls */}
+          {mintTransactions.length > transactionsPerPage && (
+            <div className="flex items-center justify-between mb-4">
+              <div className="text-sm text-gray-600 dark:text-gray-400">
+                Showing {((currentPage - 1) * transactionsPerPage) + 1} to {Math.min(currentPage * transactionsPerPage, mintTransactions.length)} of {mintTransactions.length} transactions
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+                  disabled={currentPage === 1}
+                  className="px-3 py-1 bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-300 dark:hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors text-sm"
+                >
+                  Previous
+                </button>
+                <span className="text-sm text-gray-600 dark:text-gray-400">
+                  Page {currentPage} of {Math.ceil(mintTransactions.length / transactionsPerPage)}
+                </span>
+                <button
+                  onClick={() => setCurrentPage(prev => Math.min(Math.ceil(mintTransactions.length / transactionsPerPage), prev + 1))}
+                  disabled={currentPage >= Math.ceil(mintTransactions.length / transactionsPerPage)}
+                  className="px-3 py-1 bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-300 dark:hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors text-sm"
+                >
+                  Next
+                </button>
+              </div>
+            </div>
+          )}
+          
           <TransactionTable
-            transactions={mintTransactions}
+            transactions={mintTransactions.slice(
+              (currentPage - 1) * transactionsPerPage,
+              currentPage * transactionsPerPage
+            )}
             type="mint"
           />
         </div>
