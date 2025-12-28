@@ -233,7 +233,7 @@ export default function Dashboard() {
                 })}
                 subtitle="Since the beginning"
               />
-              {stats.tokenPrice !== null && (
+              {stats.tokenPrice !== null && stats.tokenPrice !== undefined && (
                 <StatsCard
                   title="Token Price"
                   value={`${stats.tokenPrice.toFixed(8)} SOL`}
