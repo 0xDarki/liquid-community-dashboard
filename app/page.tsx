@@ -269,11 +269,17 @@ export default function Dashboard() {
                     setSyncing(false);
                   }
                 }}
-                disabled={syncing || loading || timeUntilNextSync > 0}
+                disabled={syncing || loading || isSyncInProgress || timeUntilNextSync > 0}
                 className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors text-sm font-medium"
-                title={timeUntilNextSync > 0 ? `Please wait ${Math.ceil(timeUntilNextSync / 1000)}s before updating again` : 'Update data from blockchain'}
+                title={
+                  isSyncInProgress 
+                    ? 'A sync is already in progress' 
+                    : timeUntilNextSync > 0 
+                      ? `Please wait ${Math.ceil(timeUntilNextSync / 1000)}s before updating again` 
+                      : 'Update data from blockchain'
+                }
               >
-                {syncing 
+                {syncing || isSyncInProgress
                   ? 'Updating...' 
                   : timeUntilNextSync > 0 
                     ? `Update (${Math.ceil(timeUntilNextSync / 1000)}s)`
