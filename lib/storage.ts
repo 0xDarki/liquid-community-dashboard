@@ -1,17 +1,11 @@
 import { promises as fs } from 'fs';
 import path from 'path';
 import type { MintTransaction } from './solana';
-import { put, head, list } from '@vercel/blob';
+import { createClient } from '@supabase/supabase-js';
 
 const STORAGE_DIR = path.join(process.cwd(), 'data');
 const MINTS_FILE = path.join(STORAGE_DIR, 'mints.json');
 const SYNC_STATE_FILE = path.join(STORAGE_DIR, 'sync-state.json');
-
-// Blob storage keys
-const BLOB_MINTS_KEY = 'mints.json';
-const BLOB_SYNC_STATE_KEY = 'sync-state.json';
-const BLOB_PRICE_KEY = 'price.json';
-const BLOB_HISTORY_KEY = 'history.json';
 
 // Interface pour l'état de synchronisation
 interface SyncState {
@@ -42,26 +36,26 @@ export interface HistoricalDataPoint {
   totalLiquidity: number | null;
 }
 
-// Détecter si on est sur Vercel (utilise Blob Storage) ou en local (utilise filesystem)
-// Sur Vercel, on ne peut pas écrire dans le filesystem, donc on utilise toujours Blob si le token est disponible
-const useBlobStorage = () => {
-  // Si BLOB_READ_WRITE_TOKEN existe, on est sur Vercel ou en local avec Blob configuré
-  // Sur Vercel, on ne peut pas créer de dossiers, donc on force Blob Storage
-  if (process.env.BLOB_READ_WRITE_TOKEN) {
-    // Si on est sur Vercel (VERCEL=1 ou VERCEL_ENV existe), on utilise toujours Blob
-    if (process.env.VERCEL === '1' || process.env.VERCEL_ENV) {
-      return true;
-    }
-    // En local, si le token existe, on peut utiliser Blob aussi
-    return true;
+// Initialiser le client Supabase
+function getSupabaseClient() {
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+
+  if (!supabaseUrl || !supabaseKey) {
+    throw new Error('Missing Supabase environment variables. Please set NEXT_PUBLIC_SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY (or NEXT_PUBLIC_SUPABASE_ANON_KEY)');
   }
-  return false;
+
+  return createClient(supabaseUrl, supabaseKey);
+}
+
+// Détecter si on utilise Supabase ou le filesystem local
+const useSupabase = () => {
+  return !!(process.env.NEXT_PUBLIC_SUPABASE_URL && (process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY));
 };
 
 // S'assurer que le dossier data existe (pour le mode local uniquement)
 async function ensureDataDir() {
-  // Ne jamais essayer de créer le dossier sur Vercel
-  if (useBlobStorage()) {
+  if (useSupabase()) {
     return;
   }
   try {
@@ -71,140 +65,125 @@ async function ensureDataDir() {
   }
 }
 
-// ========== FONCTIONS BLOB STORAGE (Vercel) ==========
+// ========== FONCTIONS SUPABASE ==========
 
-// Charger les mints depuis Vercel Blob
-async function loadMintsFromBlob(): Promise<MintTransaction[]> {
+// Charger les mints depuis Supabase
+async function loadMintsFromSupabase(): Promise<MintTransaction[]> {
   try {
-    // Vérifier si le blob existe
-    const blobInfo = await head(BLOB_MINTS_KEY).catch(() => null);
-    if (!blobInfo) {
-      // Le fichier n'existe pas encore, retourner un tableau vide
-      console.log('[loadMintsFromBlob] Blob not found, returning empty array');
-      return [];
-    }
-    
-    // Récupérer le contenu via l'URL
-    const response = await fetch(blobInfo.url);
-    if (!response.ok) {
-      if (response.status === 404) {
-        console.log('[loadMintsFromBlob] Blob not found (404), returning empty array');
+    const supabase = getSupabaseClient();
+    const { data, error } = await supabase
+      .from('mints')
+      .select('data')
+      .eq('key', 'mints')
+      .single();
+
+    if (error) {
+      if (error.code === 'PGRST116') {
+        // No rows returned
+        console.log('[loadMintsFromSupabase] No data found, returning empty array');
         return [];
       }
-      if (response.status === 403) {
-        console.warn('[loadMintsFromBlob] Blob access forbidden (403). This may indicate a permissions issue. Returning empty array.');
-        return [];
-      }
-      console.error(`[loadMintsFromBlob] Failed to fetch blob: ${response.status} ${response.statusText}`);
-      throw new Error(`Failed to fetch blob: ${response.statusText}`);
+      throw error;
     }
-    
-    const text = await response.text();
-    return JSON.parse(text);
+
+    return data?.data || [];
   } catch (error: any) {
-    if (error.name === 'BlobNotFoundError' || error.status === 404 || error.status === 403) {
-      return [];
-    }
-    // Ne pas logger les erreurs 403 comme des erreurs critiques, juste comme un warning
-    if (error.message?.includes('Forbidden') || error.message?.includes('403')) {
-      console.warn('[loadMintsFromBlob] Access forbidden, returning empty array');
-      return [];
-    }
-    console.error('Error loading mints from blob:', error);
+    console.error('Error loading mints from Supabase:', error);
     return [];
   }
 }
 
-// Sauvegarder les mints dans Vercel Blob
-async function saveMintsToBlob(mints: MintTransaction[]): Promise<void> {
+// Sauvegarder les mints dans Supabase
+async function saveMintsToSupabase(mints: MintTransaction[]): Promise<void> {
   try {
     const sorted = mints.sort((a, b) => b.timestamp - a.timestamp);
-    const content = JSON.stringify(sorted, null, 2);
-    await put(BLOB_MINTS_KEY, content, {
-      access: 'public',
-      contentType: 'application/json',
-      addRandomSuffix: false, // Garder le même nom de fichier
-      allowOverwrite: true, // Permettre l'écrasement
-    });
-    console.log(`[saveMintsToBlob] Successfully saved ${mints.length} transactions to blob`);
+    const supabase = getSupabaseClient();
+    
+    const { error } = await supabase
+      .from('mints')
+      .upsert({
+        key: 'mints',
+        data: sorted,
+      }, {
+        onConflict: 'key',
+      });
+
+    if (error) {
+      throw error;
+    }
+
+    console.log(`[saveMintsToSupabase] Successfully saved ${mints.length} transactions`);
   } catch (error) {
-    console.error('Error saving mints to blob:', error);
+    console.error('Error saving mints to Supabase:', error);
     throw error;
   }
 }
 
-// Charger l'état de synchronisation depuis Vercel Blob
-async function loadSyncStateFromBlob(): Promise<SyncState> {
+// Charger l'état de synchronisation depuis Supabase
+async function loadSyncStateFromSupabase(): Promise<SyncState> {
   try {
-    const blobInfo = await head(BLOB_SYNC_STATE_KEY).catch(() => null);
-    if (!blobInfo) {
-      console.log('[loadSyncStateFromBlob] Blob not found, returning default state');
-      return { lastSync: 0, isSyncing: false };
-    }
-    
-    const response = await fetch(blobInfo.url);
-    if (!response.ok) {
-      if (response.status === 404) {
-        console.log('[loadSyncStateFromBlob] Blob not found (404), returning default state');
+    const supabase = getSupabaseClient();
+    const { data, error } = await supabase
+      .from('sync_state')
+      .select('data')
+      .eq('key', 'sync_state')
+      .single();
+
+    if (error) {
+      if (error.code === 'PGRST116') {
+        // No rows returned
+        console.log('[loadSyncStateFromSupabase] No data found, returning default state');
         return { lastSync: 0, isSyncing: false };
       }
-      if (response.status === 403) {
-        console.warn('[loadSyncStateFromBlob] Blob access forbidden (403). Returning default state.');
-        return { lastSync: 0, isSyncing: false };
-      }
-      console.error(`[loadSyncStateFromBlob] Failed to fetch blob: ${response.status} ${response.statusText}`);
-      throw new Error(`Failed to fetch sync state: ${response.statusText}`);
+      throw error;
     }
-    
-    const text = await response.text();
-    const state: SyncState = JSON.parse(text);
-    
-    // Vérifier si un sync est bloqué depuis trop longtemps (plus de 10 minutes)
-    // Si c'est le cas, le réinitialiser
+
+    const state: SyncState = data?.data || { lastSync: 0, isSyncing: false };
+
+    // Vérifier si un sync est bloqué depuis trop longtemps (plus de 3 minutes)
     if (state.isSyncing) {
       const now = Date.now();
       const syncStartTime = state.syncStartTime || state.lastSync || now;
-      const tenMinutes = 10 * 60 * 1000; // 10 minutes en millisecondes
+      const threeMinutes = 3 * 60 * 1000; // 3 minutes en millisecondes
       
-      if (now - syncStartTime > tenMinutes) {
-        console.warn('[loadSyncStateFromBlob] Sync appears to be stuck, resetting isSyncing flag');
+      if (now - syncStartTime > threeMinutes) {
+        console.warn('[loadSyncStateFromSupabase] Sync appears to be stuck, resetting isSyncing flag');
         // Réinitialiser le flag isSyncing
         const resetState: SyncState = {
           lastSync: state.lastSync,
           isSyncing: false,
         };
         // Sauvegarder l'état réinitialisé
-        await saveSyncStateToBlob(resetState);
+        await saveSyncStateToSupabase(resetState);
         return resetState;
       }
     }
-    
+
     return state;
   } catch (error: any) {
-    if (error.name === 'BlobNotFoundError' || error.status === 404 || error.status === 403) {
-      return { lastSync: 0, isSyncing: false };
-    }
-    // Ne pas logger les erreurs 403 comme des erreurs critiques
-    if (error.message?.includes('Forbidden') || error.message?.includes('403')) {
-      console.warn('[loadSyncStateFromBlob] Access forbidden, returning default state');
-      return { lastSync: 0, isSyncing: false };
-    }
-    console.error('Error loading sync state from blob:', error);
+    console.error('Error loading sync state from Supabase:', error);
     return { lastSync: 0, isSyncing: false };
   }
 }
 
-// Sauvegarder l'état de synchronisation dans Vercel Blob
-async function saveSyncStateToBlob(state: SyncState): Promise<void> {
+// Sauvegarder l'état de synchronisation dans Supabase
+async function saveSyncStateToSupabase(state: SyncState): Promise<void> {
   try {
-    const content = JSON.stringify(state, null, 2);
-    await put(BLOB_SYNC_STATE_KEY, content, {
-      access: 'public',
-      contentType: 'application/json',
-      addRandomSuffix: false,
-      allowOverwrite: true,
-    });
+    const supabase = getSupabaseClient();
     
+    const { error } = await supabase
+      .from('sync_state')
+      .upsert({
+        key: 'sync_state',
+        data: state,
+      }, {
+        onConflict: 'key',
+      });
+
+    if (error) {
+      throw error;
+    }
+
     // Invalider le cache du sync state
     try {
       const { cache } = await import('./cache');
@@ -213,49 +192,101 @@ async function saveSyncStateToBlob(state: SyncState): Promise<void> {
       // Ignorer les erreurs de cache
     }
   } catch (error) {
-    console.error('Error saving sync state to blob:', error);
+    console.error('Error saving sync state to Supabase:', error);
   }
 }
 
-// Charger le prix depuis Vercel Blob
-async function loadPriceFromBlob(): Promise<TokenPrice | null> {
+// Charger le prix depuis Supabase
+async function loadPriceFromSupabase(): Promise<TokenPrice | null> {
   try {
-    const blobInfo = await head(BLOB_PRICE_KEY).catch(() => null);
-    if (!blobInfo) {
-      return null;
-    }
-    
-    const response = await fetch(blobInfo.url);
-    if (!response.ok) {
-      if (response.status === 404) {
+    const supabase = getSupabaseClient();
+    const { data, error } = await supabase
+      .from('price')
+      .select('data')
+      .eq('key', 'price')
+      .single();
+
+    if (error) {
+      if (error.code === 'PGRST116') {
+        // No rows returned
         return null;
       }
-      throw new Error(`Failed to fetch price: ${response.statusText}`);
+      throw error;
     }
-    
-    const text = await response.text();
-    return JSON.parse(text);
+
+    return data?.data || null;
   } catch (error: any) {
-    if (error.name === 'BlobNotFoundError' || error.status === 404) {
-      return null;
-    }
-    console.error('Error loading price from blob:', error);
+    console.error('Error loading price from Supabase:', error);
     return null;
   }
 }
 
-// Sauvegarder le prix dans Vercel Blob
-async function savePriceToBlob(price: TokenPrice): Promise<void> {
+// Sauvegarder le prix dans Supabase
+async function savePriceToSupabase(price: TokenPrice): Promise<void> {
   try {
-    const content = JSON.stringify(price, null, 2);
-    await put(BLOB_PRICE_KEY, content, {
-      access: 'public',
-      contentType: 'application/json',
-      addRandomSuffix: false,
-      allowOverwrite: true,
-    });
+    const supabase = getSupabaseClient();
+    
+    const { error } = await supabase
+      .from('price')
+      .upsert({
+        key: 'price',
+        data: price,
+      }, {
+        onConflict: 'key',
+      });
+
+    if (error) {
+      throw error;
+    }
   } catch (error) {
-    console.error('Error saving price to blob:', error);
+    console.error('Error saving price to Supabase:', error);
+  }
+}
+
+// Charger les données historiques depuis Supabase
+async function loadHistoryFromSupabase(): Promise<HistoricalDataPoint[]> {
+  try {
+    const supabase = getSupabaseClient();
+    const { data, error } = await supabase
+      .from('history')
+      .select('data')
+      .eq('key', 'history')
+      .single();
+
+    if (error) {
+      if (error.code === 'PGRST116') {
+        // No rows returned
+        return [];
+      }
+      throw error;
+    }
+
+    return data?.data || [];
+  } catch (error: any) {
+    console.error('Error loading history from Supabase:', error);
+    return [];
+  }
+}
+
+// Sauvegarder les données historiques dans Supabase
+async function saveHistoryToSupabase(history: HistoricalDataPoint[]): Promise<void> {
+  try {
+    const supabase = getSupabaseClient();
+    
+    const { error } = await supabase
+      .from('history')
+      .upsert({
+        key: 'history',
+        data: history,
+      }, {
+        onConflict: 'key',
+      });
+
+    if (error) {
+      throw error;
+    }
+  } catch (error) {
+    console.error('Error saving history to Supabase:', error);
   }
 }
 
@@ -296,13 +327,13 @@ async function loadSyncStateFromFile(): Promise<SyncState> {
     const data = await fs.readFile(SYNC_STATE_FILE, 'utf-8');
     const state: SyncState = JSON.parse(data);
     
-    // Vérifier si un sync est bloqué depuis trop longtemps (plus de 10 minutes)
+    // Vérifier si un sync est bloqué depuis trop longtemps (plus de 3 minutes)
     if (state.isSyncing) {
       const now = Date.now();
       const syncStartTime = state.syncStartTime || state.lastSync || now;
-      const tenMinutes = 10 * 60 * 1000; // 10 minutes en millisecondes
+      const threeMinutes = 3 * 60 * 1000; // 3 minutes en millisecondes
       
-      if (now - syncStartTime > tenMinutes) {
+      if (now - syncStartTime > threeMinutes) {
         console.warn('[loadSyncStateFromFile] Sync appears to be stuck, resetting isSyncing flag');
         // Réinitialiser le flag isSyncing
         const resetState: SyncState = {
@@ -362,20 +393,47 @@ async function savePriceToFile(price: TokenPrice): Promise<void> {
   }
 }
 
-// ========== FONCTIONS UNIFIÉES (utilisent Blob ou File selon l'environnement) ==========
+// Charger les données historiques depuis le fichier local
+async function loadHistoryFromFile(): Promise<HistoricalDataPoint[]> {
+  try {
+    await ensureDataDir();
+    const HISTORY_FILE = path.join(STORAGE_DIR, 'history.json');
+    const data = await fs.readFile(HISTORY_FILE, 'utf-8');
+    return JSON.parse(data);
+  } catch (error: any) {
+    if (error.code === 'ENOENT') {
+      return [];
+    }
+    console.error('Error loading history from file:', error);
+    return [];
+  }
+}
 
-// Charger les mints depuis le stockage (Blob ou File)
+// Sauvegarder les données historiques dans le fichier local
+async function saveHistoryToFile(history: HistoricalDataPoint[]): Promise<void> {
+  try {
+    await ensureDataDir();
+    const HISTORY_FILE = path.join(STORAGE_DIR, 'history.json');
+    await fs.writeFile(HISTORY_FILE, JSON.stringify(history, null, 2), 'utf-8');
+  } catch (error) {
+    console.error('Error saving history to file:', error);
+  }
+}
+
+// ========== FONCTIONS UNIFIÉES (utilisent Supabase ou File selon l'environnement) ==========
+
+// Charger les mints depuis le stockage (Supabase ou File)
 export async function loadStoredMints(): Promise<MintTransaction[]> {
-  if (useBlobStorage()) {
-    return loadMintsFromBlob();
+  if (useSupabase()) {
+    return loadMintsFromSupabase();
   }
   return loadMintsFromFile();
 }
 
-// Sauvegarder les mints dans le stockage (Blob ou File)
+// Sauvegarder les mints dans le stockage (Supabase ou File)
 export async function saveStoredMints(mints: MintTransaction[]): Promise<void> {
-  if (useBlobStorage()) {
-    await saveMintsToBlob(mints);
+  if (useSupabase()) {
+    await saveMintsToSupabase(mints);
   } else {
     await saveMintsToFile(mints);
   }
@@ -383,35 +441,52 @@ export async function saveStoredMints(mints: MintTransaction[]): Promise<void> {
 
 // Charger l'état de synchronisation
 export async function loadSyncState(): Promise<SyncState> {
-  if (useBlobStorage()) {
-    return loadSyncStateFromBlob();
+  if (useSupabase()) {
+    return loadSyncStateFromSupabase();
   }
   return loadSyncStateFromFile();
 }
 
 // Sauvegarder l'état de synchronisation
 export async function saveSyncState(state: SyncState): Promise<void> {
-  if (useBlobStorage()) {
-    await saveSyncStateToBlob(state);
+  if (useSupabase()) {
+    await saveSyncStateToSupabase(state);
   } else {
     await saveSyncStateToFile(state);
   }
 }
 
-// Charger le prix (unifié Blob/File)
+// Charger le prix (unifié Supabase/File)
 export async function loadStoredPrice(): Promise<TokenPrice | null> {
-  if (useBlobStorage()) {
-    return loadPriceFromBlob();
+  if (useSupabase()) {
+    return loadPriceFromSupabase();
   }
   return loadPriceFromFile();
 }
 
-// Sauvegarder le prix (unifié Blob/File)
+// Sauvegarder le prix (unifié Supabase/File)
 export async function saveStoredPrice(price: TokenPrice): Promise<void> {
-  if (useBlobStorage()) {
-    await savePriceToBlob(price);
+  if (useSupabase()) {
+    await savePriceToSupabase(price);
   } else {
     await savePriceToFile(price);
+  }
+}
+
+// Charger les données historiques (unifié Supabase/File)
+export async function loadStoredHistory(): Promise<HistoricalDataPoint[]> {
+  if (useSupabase()) {
+    return loadHistoryFromSupabase();
+  }
+  return loadHistoryFromFile();
+}
+
+// Sauvegarder les données historiques (unifié Supabase/File)
+export async function saveStoredHistory(history: HistoricalDataPoint[]): Promise<void> {
+  if (useSupabase()) {
+    await saveHistoryToSupabase(history);
+  } else {
+    await saveHistoryToFile(history);
   }
 }
 
@@ -636,7 +711,7 @@ export async function syncMints(limit: number = 50, getAll: boolean = false): Pr
     
     console.log(`[syncMints] Starting sync with limit=${limit}, getAll=${getAll}`);
     console.log(`[syncMints] Already have ${existingMints.length} stored transactions (using as cache)`);
-    console.log(`[syncMints] Storage mode: ${useBlobStorage() ? 'Vercel Blob' : 'Local filesystem'}`);
+    console.log(`[syncMints] Storage mode: ${useSupabase() ? 'Supabase' : 'Local filesystem'}`);
     
     // Si getAll=true, récupérer jusqu'à ~3000 transactions en 2 batches de 1500 (pour éviter timeout Vercel de 300s)
     // Chaque batch de 1500 transactions prend ~200s, bien en dessous du timeout de 300s
@@ -697,92 +772,6 @@ export async function syncMints(limit: number = 50, getAll: boolean = false): Pr
     // En cas d'erreur, retourner au moins ce qui est stocké
     const existing = await loadStoredMints();
     return { added: 0, total: existing.length };
-  }
-}
-
-// ========== FONCTIONS POUR LES DONNÉES HISTORIQUES ==========
-
-const HISTORY_FILE = path.join(STORAGE_DIR, 'history.json');
-
-// Charger les données historiques depuis Vercel Blob
-async function loadHistoryFromBlob(): Promise<HistoricalDataPoint[]> {
-  try {
-    const blobInfo = await head(BLOB_HISTORY_KEY).catch(() => null);
-    if (!blobInfo) {
-      return [];
-    }
-    const response = await fetch(blobInfo.url);
-    if (!response.ok) {
-      if (response.status === 404) {
-        return [];
-      }
-      throw new Error(`Failed to fetch blob: ${response.statusText}`);
-    }
-    const text = await response.text();
-    return JSON.parse(text);
-  } catch (error: any) {
-    if (error.name === 'BlobNotFoundError' || error.status === 404) {
-      return [];
-    }
-    console.error('Error loading history from blob:', error);
-    return [];
-  }
-}
-
-// Sauvegarder les données historiques dans Vercel Blob
-async function saveHistoryToBlob(history: HistoricalDataPoint[]): Promise<void> {
-  try {
-    const content = JSON.stringify(history, null, 2);
-    await put(BLOB_HISTORY_KEY, content, {
-      access: 'public',
-      contentType: 'application/json',
-      addRandomSuffix: false,
-      allowOverwrite: true,
-    });
-  } catch (error) {
-    console.error('Error saving history to blob:', error);
-  }
-}
-
-// Charger les données historiques depuis le fichier local
-async function loadHistoryFromFile(): Promise<HistoricalDataPoint[]> {
-  try {
-    await ensureDataDir();
-    const data = await fs.readFile(HISTORY_FILE, 'utf-8');
-    return JSON.parse(data);
-  } catch (error: any) {
-    if (error.code === 'ENOENT') {
-      return [];
-    }
-    console.error('Error loading history from file:', error);
-    return [];
-  }
-}
-
-// Sauvegarder les données historiques dans le fichier local
-async function saveHistoryToFile(history: HistoricalDataPoint[]): Promise<void> {
-  try {
-    await ensureDataDir();
-    await fs.writeFile(HISTORY_FILE, JSON.stringify(history, null, 2), 'utf-8');
-  } catch (error) {
-    console.error('Error saving history to file:', error);
-  }
-}
-
-// Charger les données historiques (unifié Blob/File)
-export async function loadStoredHistory(): Promise<HistoricalDataPoint[]> {
-  if (useBlobStorage()) {
-    return loadHistoryFromBlob();
-  }
-  return loadHistoryFromFile();
-}
-
-// Sauvegarder les données historiques (unifié Blob/File)
-export async function saveStoredHistory(history: HistoricalDataPoint[]): Promise<void> {
-  if (useBlobStorage()) {
-    await saveHistoryToBlob(history);
-  } else {
-    await saveHistoryToFile(history);
   }
 }
 

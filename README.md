@@ -57,7 +57,8 @@ Open [http://localhost:3000](http://localhost:3000) in your browser.
 
 3. Add environment variables in Vercel dashboard:
    - `NEXT_PUBLIC_SOLANA_RPC_URL` - Your Solana RPC endpoint (with valid API key)
-   - `BLOB_READ_WRITE_TOKEN` - Automatically added when you create a Blob store
+   - `NEXT_PUBLIC_SUPABASE_URL` - Your Supabase project URL
+   - `SUPABASE_SERVICE_ROLE_KEY` - Your Supabase service role key (for server-side operations)
 
 4. Deploy!
 
@@ -85,26 +86,22 @@ vercel env add NEXT_PUBLIC_SOLANA_RPC_URL
 
 ### Important Notes for Vercel
 
-✅ **Data Persistence**: The project uses **Vercel Blob Storage** for persistent data storage on Vercel. The `mints.json` file is automatically stored in Vercel Blob when deployed.
+✅ **Data Persistence**: The project uses **Supabase** for persistent data storage. All data (mints, sync state, prices, history) is stored in Supabase tables.
 
-**Setup Vercel Blob Storage:**
+**Setup Supabase:**
 
-1. Go to your Vercel project dashboard
-2. Navigate to **Storage** tab
-3. Click **Create Database** → Select **Blob**
-4. Create a new Blob store (e.g., "MintsStore")
-5. Select the environments where you want to include the read-write token
-6. Vercel will automatically add `BLOB_READ_WRITE_TOKEN` environment variable
+1. Create a Supabase project at [supabase.com](https://supabase.com)
+2. Run the SQL schema from `supabase-schema.sql` in your Supabase SQL Editor
+3. Get your project URL and service role key from Supabase Settings > API
+4. Add the environment variables:
+   - `NEXT_PUBLIC_SUPABASE_URL` - Your Supabase project URL
+   - `SUPABASE_SERVICE_ROLE_KEY` - Your Supabase service role key (secret)
 
+See `SUPABASE_SETUP.md` for detailed setup instructions.
 
 **For Local Development:**
 
-To use Blob Storage locally, sync the environment variables:
-```bash
-vercel env pull
-```
-
-The code automatically detects if it's running on Vercel (with `BLOB_READ_WRITE_TOKEN` and `VERCEL=1`) and uses Blob Storage, otherwise falls back to local filesystem (`data/` folder) for development.
+The code automatically detects if Supabase environment variables are configured and uses Supabase, otherwise falls back to local filesystem (`data/` folder) for development.
 
 ## Configuration
 
@@ -112,6 +109,8 @@ The code automatically detects if it's running on Vercel (with `BLOB_READ_WRITE_
 
 - `NEXT_PUBLIC_SOLANA_RPC_URL` - Public Solana RPC endpoint (accessible from client)
 - `SOLANA_RPC_URL` - Server-side only RPC endpoint (more secure)
+- `NEXT_PUBLIC_SUPABASE_URL` - Your Supabase project URL (required for production)
+- `SUPABASE_SERVICE_ROLE_KEY` - Your Supabase service role key (required for production)
 
 ### Contract Addresses
 
@@ -131,8 +130,10 @@ The dashboard tracks transactions for:
 - **Next.js 14** - React framework
 - **TypeScript** - Type safety
 - **Tailwind CSS** - Styling
+- **Supabase** - Database and storage
 - **@solana/web3.js** - Solana blockchain interaction
 - **date-fns** - Date formatting
+- **recharts** - Data visualization
 
 ## License
 

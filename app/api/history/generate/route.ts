@@ -1,46 +1,25 @@
 import { NextResponse } from 'next/server';
 import type { MintTransaction } from '@/lib/solana';
-import { loadStoredHistory, saveStoredHistory } from '@/lib/storage';
+import { loadStoredHistory, saveStoredHistory, loadStoredMints } from '@/lib/storage';
 import type { HistoricalDataPoint } from '@/lib/storage';
-import { head } from '@vercel/blob';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
-
-// Clé pour le fichier mints.json dans Vercel Blob Storage
-const BLOB_IMPORT_MINTS_KEY = 'mints.json';
 
 // Durée d'une période en millisecondes (12 heures)
 const PERIOD_DURATION = 12 * 60 * 60 * 1000;
 
 export async function POST() {
   try {
-    // Lire le fichier mints.json depuis Vercel Blob Storage
+    // Lire les mints depuis le stockage (Supabase ou filesystem)
     let allMints: MintTransaction[] = [];
     try {
-      const blobInfo = await head(BLOB_IMPORT_MINTS_KEY).catch(() => null);
-      if (!blobInfo) {
-        return NextResponse.json(
-          { error: 'File mints.json not found in Vercel Blob Storage' },
-          { status: 404 }
-        );
-      }
-      
-      const response = await fetch(blobInfo.url);
-      if (!response.ok) {
-        return NextResponse.json(
-          { error: 'Failed to fetch mints.json from Blob Storage' },
-          { status: 500 }
-        );
-      }
-      
-      const text = await response.text();
-      allMints = JSON.parse(text);
-      console.log(`[Generate History] Loaded ${allMints.length} transactions from mints.json`);
+      allMints = await loadStoredMints();
+      console.log(`[Generate History] Loaded ${allMints.length} transactions from storage`);
     } catch (error: any) {
-      console.error('[Generate History] Error loading mints.json:', error);
+      console.error('[Generate History] Error loading mints:', error);
       return NextResponse.json(
-        { error: error?.message || 'Failed to load mints.json' },
+        { error: error?.message || 'Failed to load mints' },
         { status: 500 }
       );
     }

@@ -1,54 +1,33 @@
 import { NextResponse } from 'next/server';
 import type { MintTransaction } from '@/lib/solana';
 import { loadStoredMints, saveStoredMints } from '@/lib/storage';
-import { head } from '@vercel/blob';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
-// Clé pour le fichier mints.json à importer depuis Vercel Blob Storage
-// Note: Si vous avez uploadé un fichier mints.json dans Vercel Blob Storage, 
-// il doit avoir le nom exact "mints.json" pour être importé
-const BLOB_IMPORT_MINTS_KEY = 'mints.json';
-
-export async function POST() {
+export async function POST(request: Request) {
   try {
-    // Lire le fichier mints.json depuis Vercel Blob Storage
+    // Lire les mints depuis le body de la requête (JSON)
     let importMints: MintTransaction[] = [];
     try {
-      // Vérifier si le blob existe
-      const blobInfo = await head(BLOB_IMPORT_MINTS_KEY).catch(() => null);
-      if (!blobInfo) {
+      const body = await request.json();
+      
+      // Vérifier si c'est un array de transactions
+      if (!Array.isArray(body)) {
         return NextResponse.json(
-          { error: 'File mints.json not found in Vercel Blob Storage' },
-          { status: 404 }
+          { error: 'Request body must be an array of MintTransaction objects' },
+          { status: 400 }
         );
       }
       
-      // Récupérer le contenu via l'URL
-      const response = await fetch(blobInfo.url);
-      if (!response.ok) {
-        if (response.status === 404) {
-          return NextResponse.json(
-            { error: 'File mints.json not found in Vercel Blob Storage' },
-            { status: 404 }
-          );
-        }
-        throw new Error(`Failed to fetch blob: ${response.statusText}`);
-      }
-      
-      const text = await response.text();
-      importMints = JSON.parse(text);
-      console.log(`[Import] Loaded ${importMints.length} transactions from Vercel Blob Storage (mints.json)`);
+      importMints = body;
+      console.log(`[Import] Received ${importMints.length} transactions from request body`);
     } catch (error: any) {
-      if (error.name === 'BlobNotFoundError' || error.status === 404) {
-        return NextResponse.json(
-          { error: 'File mints.json not found in Vercel Blob Storage' },
-          { status: 404 }
-        );
-      }
-      console.error('[Import] Error loading from Blob Storage:', error);
-      throw error;
+      console.error('[Import] Error parsing request body:', error);
+      return NextResponse.json(
+        { error: error?.message || 'Failed to parse request body. Expected JSON array of MintTransaction objects.' },
+        { status: 400 }
+      );
     }
     
     // Charger les mints existants depuis le stockage
