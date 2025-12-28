@@ -256,6 +256,106 @@ export async function getAllStoredMints(): Promise<MintTransaction[]> {
   return loadStoredMints();
 }
 
+// Supprimer une transaction par signature
+export async function removeMintBySignature(signature: string): Promise<{ success: boolean; removed: boolean }> {
+  try {
+    const existingMints = await loadStoredMints();
+    const initialCount = existingMints.length;
+    
+    // Filtrer pour retirer la transaction avec cette signature
+    const filtered = existingMints.filter(m => m.signature !== signature);
+    
+    if (filtered.length < initialCount) {
+      // Sauvegarder les transactions filtrées
+      await saveStoredMints(filtered);
+      console.log(`[removeMintBySignature] Removed transaction ${signature}. Before: ${initialCount}, After: ${filtered.length}`);
+      return { success: true, removed: true };
+    }
+    
+    console.log(`[removeMintBySignature] Transaction ${signature} not found in storage`);
+    return { success: true, removed: false };
+  } catch (error) {
+    console.error('Error removing mint:', error);
+    return { success: false, removed: false };
+  }
+}
+
+// Détecter et supprimer automatiquement les transactions échouées
+export async function detectAndRemoveFailedTransactions(): Promise<{ 
+  success: boolean; 
+  checked: number; 
+  failed: number; 
+  removed: number;
+  failedSignatures: string[];
+}> {
+  try {
+    const { connection } = await import('./solana');
+    const existingMints = await loadStoredMints();
+    
+    console.log(`[detectAndRemoveFailedTransactions] Checking ${existingMints.length} transactions for failures...`);
+    
+    const failedSignatures: string[] = [];
+    let checked = 0;
+    const batchSize = 10; // Vérifier par batch de 10 pour éviter trop de requêtes
+    
+    // Vérifier les transactions par batch
+    for (let i = 0; i < existingMints.length; i += batchSize) {
+      const batch = existingMints.slice(i, i + batchSize);
+      
+      // Vérifier chaque transaction du batch
+      for (const mint of batch) {
+        try {
+          // Utiliser getSignatureStatus pour vérifier rapidement si la transaction a échoué
+          const status = await connection.getSignatureStatus(mint.signature);
+          
+          checked++;
+          
+          // Si la transaction a échoué (err !== null) ou n'existe pas
+          if (status?.value?.err || !status?.value) {
+            failedSignatures.push(mint.signature);
+            console.log(`[detectAndRemoveFailedTransactions] Found failed transaction: ${mint.signature}`);
+          }
+          
+          // Délai entre les vérifications pour respecter les limites RPC
+          if (checked % 5 === 0) {
+            await new Promise(resolve => setTimeout(resolve, 150)); // 150ms delay
+          }
+        } catch (error) {
+          console.error(`[detectAndRemoveFailedTransactions] Error checking transaction ${mint.signature}:`, error);
+          // En cas d'erreur, considérer comme potentiellement échouée
+          failedSignatures.push(mint.signature);
+        }
+      }
+    }
+    
+    // Supprimer les transactions échouées
+    let removed = 0;
+    if (failedSignatures.length > 0) {
+      const filtered = existingMints.filter(m => !failedSignatures.includes(m.signature));
+      await saveStoredMints(filtered);
+      removed = existingMints.length - filtered.length;
+      console.log(`[detectAndRemoveFailedTransactions] Removed ${removed} failed transactions`);
+    }
+    
+    return {
+      success: true,
+      checked,
+      failed: failedSignatures.length,
+      removed,
+      failedSignatures
+    };
+  } catch (error) {
+    console.error('Error detecting failed transactions:', error);
+    return {
+      success: false,
+      checked: 0,
+      failed: 0,
+      removed: 0,
+      failedSignatures: []
+    };
+  }
+}
+
 // Récupérer les mints stockés avec une limite
 export async function getStoredMints(limit: number = 50): Promise<MintTransaction[]> {
   const all = await loadStoredMints();

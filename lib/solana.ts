@@ -8,6 +8,8 @@ export const BUYBACK_ADDRESS = '1nc1nerator11111111111111111111111111111111';
 // Transactions à exclure
 export const EXCLUDED_TRANSACTIONS = [
   '94gY53mPFY6JiYEvshn3EXdmNPTd4VD4x3wnBnSLEYRMB4n9pDWWUqucf6yR8ywmWvVWPeZ7ZnbQqtjACnWpnAh',
+  '3pNwQAYzBtaBiprHMR5ytUaix64Km1XF14NJBqrM62BFNuXdNcSJ1ZZDPfVBjJjDxgiNKAj3QsYmt78eAjnc5ydM', // Failed transaction
+  '4aUxESG3rCoNaWWxGXfkkCXF8gcU9FUH6Hx6JJyHCN3bwpd4U7qRGunGjSj1fjMRZDuBpXdw9Y6wuuYrKESctQWs', // Failed transaction
 ];
 
 // Connexion à Solana (utilise un RPC public, vous pouvez le changer pour un RPC privé)
@@ -667,11 +669,30 @@ export async function getMintTransactions(limit: number = 50, existingSignatures
           }
           
           try {
+            // Vérifier d'abord le statut de la transaction pour éviter les transactions échouées
+            const status = await connection.getSignatureStatus(sigInfo.signature);
+            
+            // Si la transaction a échoué (err !== null) ou n'existe pas, l'ignorer
+            if (status?.value?.err || !status?.value) {
+              console.log(`[getMintTransactions] Skipping failed transaction: ${sigInfo.signature}`);
+              processedCount++;
+              consecutiveErrors = 0;
+              continue;
+            }
+            
             const tx = await connection.getParsedTransaction(sigInfo.signature, {
               maxSupportedTransactionVersion: 0,
             });
             
             if (tx) {
+              // Vérifier aussi dans les métadonnées de la transaction si elle a échoué
+              if (tx.meta?.err) {
+                console.log(`[getMintTransactions] Skipping failed transaction (meta.err): ${sigInfo.signature}`);
+                processedCount++;
+                consecutiveErrors = 0;
+                continue;
+              }
+              
               const mintTx = parseMintTransaction(tx);
               if (mintTx && !EXCLUDED_TRANSACTIONS.includes(mintTx.signature)) {
                 transactions.push(mintTx);
@@ -806,11 +827,30 @@ export async function getMintTransactions(limit: number = 50, existingSignatures
             }
             
             try {
+              // Vérifier d'abord le statut de la transaction pour éviter les transactions échouées
+              const status = await connection.getSignatureStatus(sigInfo.signature);
+              
+              // Si la transaction a échoué (err !== null) ou n'existe pas, l'ignorer
+              if (status?.value?.err || !status?.value) {
+                console.log(`[getMintTransactions] Token mint: Skipping failed transaction: ${sigInfo.signature}`);
+                processedCount++;
+                consecutiveErrors = 0;
+                continue;
+              }
+              
               const tx = await connection.getParsedTransaction(sigInfo.signature, {
                 maxSupportedTransactionVersion: 0,
               });
               
               if (tx) {
+                // Vérifier aussi dans les métadonnées de la transaction si elle a échoué
+                if (tx.meta?.err) {
+                  console.log(`[getMintTransactions] Token mint: Skipping failed transaction (meta.err): ${sigInfo.signature}`);
+                  processedCount++;
+                  consecutiveErrors = 0;
+                  continue;
+                }
+                
                 const mintTx = parseMintTransaction(tx);
                 if (mintTx && !EXCLUDED_TRANSACTIONS.includes(mintTx.signature)) {
                   transactions.push(mintTx);
@@ -931,11 +971,30 @@ export async function getTransferTransactions(limit: number = 50): Promise<Trans
         }
         
         try {
+          // Vérifier d'abord le statut de la transaction pour éviter les transactions échouées
+          const status = await connection.getSignatureStatus(sigInfo.signature);
+          
+          // Si la transaction a échoué (err !== null) ou n'existe pas, l'ignorer
+          if (status?.value?.err || !status?.value) {
+            console.log(`[getTransferTransactions] Skipping failed transaction: ${sigInfo.signature}`);
+            processedCount++;
+            consecutiveErrors = 0;
+            continue;
+          }
+          
           const tx = await connection.getParsedTransaction(sigInfo.signature, {
             maxSupportedTransactionVersion: 0,
           });
           
           if (tx) {
+            // Vérifier aussi dans les métadonnées de la transaction si elle a échoué
+            if (tx.meta?.err) {
+              console.log(`[getTransferTransactions] Skipping failed transaction (meta.err): ${sigInfo.signature}`);
+              processedCount++;
+              consecutiveErrors = 0;
+              continue;
+            }
+            
             const transferTx = parseTransferTransaction(tx);
             if (transferTx && !EXCLUDED_TRANSACTIONS.includes(transferTx.signature)) {
               transactions.push(transferTx);
