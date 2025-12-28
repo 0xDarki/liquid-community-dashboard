@@ -128,10 +128,11 @@ export default function Dashboard() {
     setLoading(true);
     setError(null);
     try {
-      // Charger seulement les mints et le sync state (tout est dans mints.json)
-      const [mintsRes, syncStateRes] = await Promise.all([
+      // Charger les mints, le sync state et les prix depuis la base de données
+      const [mintsRes, syncStateRes, priceRes] = await Promise.all([
         fetch('/api/mints?limit=0'), // 0 = toutes les transactions stockées
         fetch('/api/sync-state'), // Récupérer l'état de synchronisation partagé
+        fetch('/api/price').catch(() => null), // Charger les prix depuis la base de données
       ]);
 
       // Vérifier les erreurs de connexion
@@ -149,9 +150,10 @@ export default function Dashboard() {
         throw new Error(errorData.error || 'Failed to fetch data from API');
       }
 
-      const [mints, syncState] = await Promise.all([
+      const [mints, syncState, priceData] = await Promise.all([
         mintsRes.json(),
         syncStateRes.json().catch(() => ({ lastSync: 0, isSyncing: false })),
+        priceRes?.json().catch(() => null) || Promise.resolve(null),
       ]);
 
       // Calculer les stats depuis les mints
@@ -161,8 +163,22 @@ export default function Dashboard() {
       setMintTransactions(mints);
       setLastUpdate(new Date());
       
-      // Définir immédiatement les stats calculées (sans attendre l'API)
-      setStats(calculatedStats);
+      // Fusionner les stats calculées avec les prix depuis la base de données
+      const statsWithPrice = {
+        ...calculatedStats,
+        tokenPrice: priceData?.price ?? null,
+        tokenPriceInUsd: priceData?.priceInUsd ?? null,
+        solPrice: priceData?.solPrice ?? null,
+        tokenPriceSol: priceData?.solBalance ?? null,
+        tokenPriceToken: priceData?.tokenBalance ?? null,
+        // Calculer totalLiquidity si on a les prix
+        totalLiquidity: priceData?.priceInUsd && priceData?.solPrice
+          ? (calculatedStats.totalSolAdded * priceData.solPrice) + (calculatedStats.totalTokensAdded * priceData.priceInUsd)
+          : null,
+      };
+      
+      // Définir immédiatement les stats avec les prix depuis la base de données
+      setStats(statsWithPrice);
       
       // Mettre à jour le lastSyncTime depuis le sync state partagé
       if (syncState && syncState.lastSync && syncState.lastSync > 0) {
@@ -520,31 +536,35 @@ export default function Dashboard() {
                 const priceSol = stats.tokenPriceSol ?? stats.solBalance;
                 const priceToken = stats.tokenPriceToken ?? stats.tokenBalance;
                 
-                if (priceInSol != null && priceInSol > 0) {
-                  return (
-                    <StatsCard
-                      title="Token Price"
-                      value={priceInUsd != null && priceInUsd > 0 
-                        ? `$${priceInUsd.toFixed(8)} $LIQUID`
-                        : `${priceInSol.toFixed(8)} SOL`}
-                      subtitle={priceInUsd != null && priceInUsd > 0
-                        ? `${priceInSol.toFixed(8)} SOL ($${solPrice?.toFixed(2) || 'N/A'} SOL)`
-                        : `${priceSol.toFixed(4)} SOL / ${priceToken.toLocaleString('en-US', { maximumFractionDigits: 2 })} tokens`}
-                    />
-                  );
-                }
-                return null;
+                // Toujours afficher la carte Token Price, même si les prix ne sont pas encore disponibles
+                return (
+                  <StatsCard
+                    title="Token Price"
+                    value={priceInUsd != null && priceInUsd > 0 
+                      ? `$${priceInUsd.toFixed(8)} $LIQUID`
+                      : priceInSol != null && priceInSol > 0
+                        ? `${priceInSol.toFixed(8)} SOL`
+                        : 'Loading...'}
+                    subtitle={priceInUsd != null && priceInUsd > 0
+                      ? `${priceInSol?.toFixed(8) || '0'} SOL ($${solPrice?.toFixed(2) || 'N/A'} SOL)`
+                      : priceInSol != null && priceInSol > 0
+                        ? `${priceSol > 0 ? priceSol.toFixed(4) : '0'} SOL / ${priceToken > 0 ? priceToken.toLocaleString('en-US', { maximumFractionDigits: 2 }) : '0'} tokens`
+                        : 'Fetching price data...'}
+                  />
+                );
               })()}
-              {stats.totalLiquidity != null && stats.totalLiquidity > 0 && (
-                <StatsCard
-                  title="Total Liquidity"
-                  value={`$${stats.totalLiquidity.toLocaleString('en-US', {
-                    minimumFractionDigits: 2,
-                    maximumFractionDigits: 2,
-                  })}`}
-                  subtitle={`${stats.totalSolAdded.toFixed(4)} SOL × $${stats.solPrice?.toFixed(2) || '0'} + ${stats.totalTokensAdded.toLocaleString('en-US', { maximumFractionDigits: 2 })} $LIQUID × $${stats.tokenPriceInUsd?.toFixed(8) || '0'}`}
-                />
-              )}
+              <StatsCard
+                title="Total Liquidity"
+                value={stats.totalLiquidity != null && stats.totalLiquidity > 0
+                  ? `$${stats.totalLiquidity.toLocaleString('en-US', {
+                      minimumFractionDigits: 2,
+                      maximumFractionDigits: 2,
+                    })}`
+                  : 'Loading...'}
+                subtitle={stats.totalLiquidity != null && stats.totalLiquidity > 0
+                  ? `${stats.totalSolAdded.toFixed(4)} SOL × $${stats.solPrice?.toFixed(2) || '0'} + ${stats.totalTokensAdded.toLocaleString('en-US', { maximumFractionDigits: 2 })} $LIQUID × $${stats.tokenPriceInUsd?.toFixed(8) || '0'}`
+                  : 'Calculating liquidity...'}
+              />
             </div>
           </div>
         )}
