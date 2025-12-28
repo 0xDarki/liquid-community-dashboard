@@ -147,7 +147,7 @@ export default function ModernChart({ transactions }: ModernChartProps) {
       
       // Compter les transactions dans cette heure
       const hourTxs = sortedTxs.filter(tx => tx.timestamp >= hourStart && tx.timestamp < hourEnd);
-      const isActive = hourTxs.length >= 10;
+      const isActive = hourTxs.length >= 5;
       
       hourStatus.set(hour, {
         active: isActive,
@@ -193,37 +193,7 @@ export default function ModernChart({ transactions }: ModernChartProps) {
       });
     }
     
-    // Calculer la durée de fonctionnement continu (heures actives consécutives)
-    let uptimeDuration: number | null = null;
-    let uptimeStart: number | null = null;
-    
-    // Parcourir de la fin vers le début pour trouver le début de l'uptime actuel
-    for (let hour = currentHour; hour >= firstTxHour; hour--) {
-      const status = hourStatus.get(hour);
-      if (!status) continue;
-      
-      if (status.active) {
-        // Heure active - c'est le début de l'uptime
-        uptimeStart = status.start;
-      } else {
-        // Heure inactive - arrêter la recherche
-        break;
-      }
-    }
-    
-    // Si on a trouvé un début d'uptime et que l'heure actuelle est active
-    if (uptimeStart !== null && currentHourStatus && currentHourStatus.active) {
-      uptimeDuration = now - uptimeStart;
-    } else if (uptimeStart !== null) {
-      // Si l'heure actuelle n'est pas encore marquée mais qu'on a un uptime, calculer jusqu'à la fin de la dernière heure active
-      const lastActiveHour = Math.floor((now - oneHourInSeconds) / 3600);
-      const lastActiveStatus = hourStatus.get(lastActiveHour);
-      if (lastActiveStatus && lastActiveStatus.active) {
-        uptimeDuration = (lastActiveHour + 1) * 3600 - uptimeStart;
-      }
-    }
-    
-    // Déterminer le statut actuel
+    // Déterminer le statut actuel (déclarer d'abord les variables nécessaires)
     const lastCompleteHourStart = Math.floor(now / 3600) * 3600 - 3600;
     const lastCompleteHourEnd = Math.floor(now / 3600) * 3600;
     const lastHourTransactions = sortedTxs.filter(tx => {
@@ -234,8 +204,108 @@ export default function ModernChart({ transactions }: ModernChartProps) {
     const currentHourTransactions = sortedTxs.filter(tx => tx.timestamp >= currentHourStart);
     const hasRecentTransaction = lastTransaction.timestamp >= tenMinutesAgo;
     
-    // Si > 10 transactions dans l'heure complète précédente → bot fonctionne
-    if (lastHourTransactions.length >= 10) {
+    // Calculer la durée de fonctionnement continu (heures actives consécutives)
+    let uptimeDuration: number | null = null;
+    let uptimeStart: number | null = null;
+    
+    // Vérifier si le bot est actuellement actif (basé sur les transactions récentes ou l'heure actuelle)
+    const isCurrentlyActive = (currentHourStatus && currentHourStatus.active) || 
+                              (hasRecentTransaction && currentHourTransactions.length > 0);
+    
+    // Parcourir de la fin vers le début pour trouver le début de l'uptime actuel
+    // On commence par vérifier l'heure actuelle si elle est active, sinon l'heure précédente
+    let startHour = currentHour;
+    let shouldIncludeCurrentHour = false;
+    
+    // Si l'heure actuelle a des transactions récentes mais pas encore 5, on peut quand même la considérer
+    if (hasRecentTransaction && currentHourTransactions.length > 0) {
+      shouldIncludeCurrentHour = true;
+    } else if (currentHourStatus && currentHourStatus.active) {
+      shouldIncludeCurrentHour = true;
+    } else {
+      // Si l'heure actuelle n'est pas active, commencer par l'heure précédente
+      startHour = currentHour - 1;
+    }
+    
+    // Parcourir les heures pour trouver le début de l'uptime
+    // On parcourt de l'heure actuelle (ou précédente) vers le début
+    for (let hour = startHour; hour >= firstTxHour; hour--) {
+      const status = hourStatus.get(hour);
+      
+      // Si c'est l'heure actuelle et qu'on doit l'inclure
+      if (hour === currentHour && shouldIncludeCurrentHour) {
+        // L'heure actuelle a des transactions récentes, la considérer comme active
+        // Si on n'a pas encore trouvé de début, cette heure sera le début
+        if (!uptimeStart) {
+          uptimeStart = currentHourStart;
+        }
+        // Continuer à chercher en arrière pour voir s'il y a des heures actives précédentes
+        continue;
+      }
+      
+      if (!status) {
+        // Si pas de statut pour cette heure, continuer
+        continue;
+      }
+      
+      if (status.active) {
+        // Heure active - mettre à jour le début de l'uptime
+        uptimeStart = status.start;
+      } else {
+        // Heure inactive - arrêter la recherche
+        break;
+      }
+    }
+    
+    // Si on n'a pas trouvé de début mais que l'heure actuelle doit être incluse
+    if (!uptimeStart && shouldIncludeCurrentHour) {
+      uptimeStart = currentHourStart;
+    }
+    
+    // Calculer l'uptime si on a trouvé un début
+    if (uptimeStart !== null) {
+      if (isCurrentlyActive || shouldIncludeCurrentHour) {
+        // Le bot est actuellement actif, calculer jusqu'à maintenant
+        uptimeDuration = now - uptimeStart;
+      } else {
+        // Le bot n'est pas actuellement actif, calculer jusqu'à la fin de la dernière heure active
+        const lastActiveHour = startHour;
+        const lastActiveStatus = hourStatus.get(lastActiveHour);
+        if (lastActiveStatus && lastActiveStatus.active) {
+          uptimeDuration = (lastActiveHour + 1) * 3600 - uptimeStart;
+        } else if (uptimeStart) {
+          // Fallback: calculer depuis le début trouvé jusqu'à maintenant
+          uptimeDuration = now - uptimeStart;
+        }
+      }
+    }
+    
+    // S'assurer que l'uptime est calculé si possible (fallback final)
+    if (!uptimeDuration && uptimeStart !== null) {
+      // Si on a un début mais pas de durée, calculer depuis le début jusqu'à maintenant
+      uptimeDuration = now - uptimeStart;
+    }
+    
+    // Si toujours pas d'uptime mais que le bot est actif, utiliser la première transaction comme début
+    if (!uptimeDuration && (isCurrentlyActive || shouldIncludeCurrentHour) && sortedTxs.length > 0) {
+      uptimeStart = sortedTxs[0].timestamp;
+      uptimeDuration = now - uptimeStart;
+    }
+    
+    // Debug: vérifier que l'uptime est calculé
+    if (process.env.NODE_ENV === 'development') {
+      console.log('[BotStatus] Uptime calculation:', {
+        uptimeDuration,
+        uptimeStart,
+        isCurrentlyActive,
+        shouldIncludeCurrentHour,
+        hasRecentTransaction,
+        currentHourTransactions: currentHourTransactions.length
+      });
+    }
+    
+    // Si >= 5 transactions dans l'heure complète précédente → bot fonctionne
+    if (lastHourTransactions.length >= 5) {
       return {
         status: 'operational',
         message: `Bot operational (${lastHourTransactions.length} tx in last hour)`,
@@ -435,6 +505,11 @@ export default function ModernChart({ transactions }: ModernChartProps) {
                 {(() => {
                   const hours = Math.floor(botStatus.uptimeDuration / 3600);
                   const minutes = Math.floor((botStatus.uptimeDuration % 3600) / 60);
+                  const days = Math.floor(hours / 24);
+                  if (days > 0) {
+                    const remainingHours = hours % 24;
+                    return `${days}d ${remainingHours}h ${minutes}m`;
+                  }
                   if (hours > 0) {
                     return `${hours}h ${minutes}m`;
                   }
