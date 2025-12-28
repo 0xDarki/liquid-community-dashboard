@@ -378,15 +378,36 @@ export default function ModernChart({ transactions }: ModernChartProps) {
   const CustomTooltip = ({ active, payload, label }: any) => {
     if (active && payload && payload.length) {
       return (
-        <div className="bg-white dark:bg-gray-900 rounded-lg shadow-xl p-4 border border-gray-200 dark:border-gray-700">
-          <p className="font-semibold text-gray-900 dark:text-white mb-2">{label}</p>
-          {payload.map((entry: any, index: number) => (
-            <p key={index} className="text-sm" style={{ color: entry.color }}>
-              {entry.name}: {entry.value != null ? (typeof entry.value === 'number' 
-                ? entry.value.toLocaleString('en-US', { maximumFractionDigits: entry.dataKey === 'solAdded' ? 4 : 2 })
-                : entry.value) : 'N/A'}
-            </p>
-          ))}
+        <div className="bg-white dark:bg-gray-900 rounded-lg shadow-xl p-3 border border-gray-200 dark:border-gray-700">
+          <p className="font-semibold text-sm text-gray-900 dark:text-white mb-1.5">{label}</p>
+          {payload.map((entry: any, index: number) => {
+            let formattedValue = 'N/A';
+            if (entry.value != null && typeof entry.value === 'number') {
+              if (entry.dataKey === 'solAdded' || entry.dataKey === 'cumulativeSol') {
+                // Format SOL avec 4 décimales max, suppression des zéros inutiles
+                formattedValue = entry.value.toLocaleString('en-US', { 
+                  maximumFractionDigits: 4,
+                  minimumFractionDigits: 0
+                }) + ' SOL';
+              } else if (entry.dataKey === 'tokensAdded' || entry.dataKey === 'cumulativeTokens') {
+                // Format tokens avec notation K/M
+                if (entry.value >= 1000000) {
+                  formattedValue = `${(entry.value / 1000000).toFixed(2)}M`;
+                } else if (entry.value >= 1000) {
+                  formattedValue = `${(entry.value / 1000).toFixed(2)}K`;
+                } else {
+                  formattedValue = entry.value.toLocaleString('en-US', { maximumFractionDigits: 0 });
+                }
+              } else {
+                formattedValue = entry.value.toLocaleString('en-US', { maximumFractionDigits: 2 });
+              }
+            }
+            return (
+              <p key={index} className="text-xs" style={{ color: entry.color }}>
+                <span className="font-medium">{entry.name}:</span> {formattedValue}
+              </p>
+            );
+          })}
         </div>
       );
     }
@@ -510,19 +531,19 @@ export default function ModernChart({ transactions }: ModernChartProps) {
       </div>
 
       {/* Graphiques côte à côte */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
         {/* Graphique en aires - SOL et Tokens ajoutés */}
-        <div className="bg-white dark:bg-gray-800 rounded-xl shadow-lg p-4 border border-gray-200 dark:border-gray-700">
-        <div className="flex items-center justify-between mb-3">
-          <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
+        <div className="bg-white dark:bg-gray-800 rounded-xl shadow-lg p-3 border border-gray-200 dark:border-gray-700">
+        <div className="flex items-center justify-between mb-2">
+          <h3 className="text-base font-semibold text-gray-900 dark:text-white">
             Liquidity Added Over Time (1h intervals)
           </h3>
           <span className="text-xs text-gray-500 dark:text-gray-400">
             {chartData.length} points
           </span>
         </div>
-        <ResponsiveContainer width="100%" height={280}>
-          <AreaChart data={chartData} margin={{ top: 5, right: 20, left: 5, bottom: 60 }}>
+        <ResponsiveContainer width="100%" height={260}>
+          <AreaChart data={chartData} margin={{ top: 5, right: 15, left: 5, bottom: 50 }}>
             <defs>
               <linearGradient id="colorSol" x1="0" y1="0" x2="0" y2="1">
                 <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.8}/>
@@ -537,10 +558,10 @@ export default function ModernChart({ transactions }: ModernChartProps) {
             <XAxis 
               dataKey="date" 
               className="text-gray-600 dark:text-gray-400"
-              tick={{ fill: 'currentColor', fontSize: 10 }}
+              tick={{ fill: 'currentColor', fontSize: 9 }}
               angle={-45}
               textAnchor="end"
-              height={60}
+              height={50}
               interval={xAxisInterval}
               minTickGap={8}
             />
@@ -592,17 +613,17 @@ export default function ModernChart({ transactions }: ModernChartProps) {
         </div>
 
         {/* Graphique cumulatif */}
-        <div className="bg-white dark:bg-gray-800 rounded-xl shadow-lg p-4 border border-gray-200 dark:border-gray-700">
-        <div className="flex items-center justify-between mb-3">
-          <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
+        <div className="bg-white dark:bg-gray-800 rounded-xl shadow-lg p-3 border border-gray-200 dark:border-gray-700">
+        <div className="flex items-center justify-between mb-2">
+          <h3 className="text-base font-semibold text-gray-900 dark:text-white">
             Cumulative Liquidity Over Time
           </h3>
           <span className="text-xs text-gray-500 dark:text-gray-400">
             {chartData.length} points
           </span>
         </div>
-        <ResponsiveContainer width="100%" height={280}>
-          <AreaChart data={chartData} margin={{ top: 5, right: 20, left: 5, bottom: 60 }}>
+        <ResponsiveContainer width="100%" height={260}>
+          <AreaChart data={chartData} margin={{ top: 5, right: 15, left: 5, bottom: 50 }}>
             <defs>
               <linearGradient id="colorCumulativeSol" x1="0" y1="0" x2="0" y2="1">
                 <stop offset="5%" stopColor="#6366f1" stopOpacity={0.8}/>
@@ -617,31 +638,37 @@ export default function ModernChart({ transactions }: ModernChartProps) {
             <XAxis 
               dataKey="date" 
               className="text-gray-600 dark:text-gray-400"
-              tick={{ fill: 'currentColor', fontSize: 10 }}
+              tick={{ fill: 'currentColor', fontSize: 9 }}
               angle={-45}
               textAnchor="end"
-              height={60}
+              height={50}
               interval={xAxisInterval}
               minTickGap={8}
             />
             <YAxis 
               yAxisId="left"
               className="text-gray-600 dark:text-gray-400"
-              tick={{ fill: 'currentColor', fontSize: 12 }}
-              tickFormatter={(value) => `${value.toFixed(2)} SOL`}
-              width={80}
+              tick={{ fill: 'currentColor', fontSize: 11 }}
+              tickFormatter={(value) => {
+                // Format SOL plus lisible
+                if (value >= 1000) return `${(value / 1000).toFixed(2)}K SOL`;
+                if (value >= 1) return `${value.toFixed(2)} SOL`;
+                return `${value.toFixed(4)} SOL`;
+              }}
+              width={75}
             />
             <YAxis 
               yAxisId="right"
               orientation="right"
               className="text-gray-600 dark:text-gray-400"
-              tick={{ fill: 'currentColor', fontSize: 12 }}
+              tick={{ fill: 'currentColor', fontSize: 11 }}
               tickFormatter={(value) => {
-                if (value >= 1000000) return `${(value / 1000000).toFixed(1)}M`;
-                if (value >= 1000) return `${(value / 1000).toFixed(1)}K`;
-                return value.toFixed(0);
+                // Format tokens plus lisible
+                if (value >= 1000000) return `${(value / 1000000).toFixed(2)}M`;
+                if (value >= 1000) return `${(value / 1000).toFixed(2)}K`;
+                return value.toLocaleString('en-US', { maximumFractionDigits: 0 });
               }}
-              width={80}
+              width={75}
             />
             <Tooltip content={<CustomTooltip />} />
             <Legend />
