@@ -398,6 +398,27 @@ export default function ModernChart({ transactions }: ModernChartProps) {
                   'bg-gray-500'
                 }`}></div>
                 <span className="text-xs font-medium capitalize">{botStatus.status}</span>
+                {/* Durée de fonctionnement continu dans le badge */}
+                {botStatus.uptimeDuration !== null && botStatus.uptimeDuration > 0 && (
+                  <>
+                    <span className="text-xs opacity-70">•</span>
+                    <span className="text-xs font-medium">
+                      {(() => {
+                        const hours = Math.floor(botStatus.uptimeDuration / 3600);
+                        const minutes = Math.floor((botStatus.uptimeDuration % 3600) / 60);
+                        const days = Math.floor(hours / 24);
+                        if (days > 0) {
+                          const remainingHours = hours % 24;
+                          return `${days}d ${remainingHours}h`;
+                        }
+                        if (hours > 0) {
+                          return `${hours}h ${minutes}m`;
+                        }
+                        return `${minutes}m`;
+                      })()}
+                    </span>
+                  </>
+                )}
               </div>
             </div>
             <div className="text-right">
@@ -416,31 +437,6 @@ export default function ModernChart({ transactions }: ModernChartProps) {
               )}
             </div>
           </div>
-
-          {/* Durée de fonctionnement continu */}
-          {botStatus.uptimeDuration !== null && botStatus.uptimeDuration > 0 && (
-            <div className="flex items-center gap-1.5 pt-1.5 border-t border-gray-200 dark:border-gray-700">
-              <span className="text-xs font-medium text-gray-500 dark:text-gray-400">Uptime:</span>
-              <span className="text-xs font-semibold text-green-600 dark:text-green-400">
-                {(() => {
-                  const hours = Math.floor(botStatus.uptimeDuration / 3600);
-                  const minutes = Math.floor((botStatus.uptimeDuration % 3600) / 60);
-                  const days = Math.floor(hours / 24);
-                  if (days > 0) {
-                    const remainingHours = hours % 24;
-                    return `${days}d ${remainingHours}h ${minutes}m`;
-                  }
-                  if (hours > 0) {
-                    return `${hours}h ${minutes}m`;
-                  }
-                  return `${minutes}m`;
-                })()}
-              </span>
-              <span className="text-xs text-gray-500 dark:text-gray-500">
-                (running continuously)
-              </span>
-            </div>
-          )}
 
           {/* Périodes d'inactivité */}
           {botStatus.downtimePeriods && botStatus.downtimePeriods.length > 0 && (
