@@ -649,63 +649,39 @@ export async function getMintTransactions(limit: number = 50, existingSignatures
         
         console.log(`[getMintTransactions] Processing ${signaturesToProcess.length} signatures (batch ${pageCount + 1})`);
         
-        // Traiter séquentiellement pour éviter les 429 (mais optimisé)
+        // Traiter séquentiellement pour éviter les 429 (optimisé : pas de vérification de statut redondante)
         for (const sigInfo of signaturesToProcess) {
+          // Ignorer les transactions exclues, déjà vues, ou déjà stockées
+          if (EXCLUDED_TRANSACTIONS.includes(sigInfo.signature) || 
+              seenSignatures.has(sigInfo.signature) ||
+              (existingSignatures && existingSignatures.has(sigInfo.signature))) {
+            continue;
+          }
+          
           if (consecutiveErrors >= maxConsecutiveErrors) {
             console.warn('Too many consecutive errors, stopping transaction fetching');
             hasMore = false;
             break;
           }
           
-          const batch = signaturesToCheck.slice(i, i + PARALLEL_BATCH_SIZE);
-          
-          // Traiter le batch en parallèle avec délai progressif pour éviter les 429
-          const batchPromises = batch.map(async (sigInfo, index) => {
-            // Ajouter un délai progressif pour espacer les requêtes
-            if (index > 0) {
-              await delay(MIN_REQUEST_DELAY * index);
-            }
-            try {
-              // Vérifier le statut et récupérer la transaction en parallèle
-              const [status, tx] = await Promise.all([
-                connection.getSignatureStatus(sigInfo.signature),
-                connection.getParsedTransaction(sigInfo.signature, {
-                  maxSupportedTransactionVersion: 0,
-                })
-              ]);
-              
-              // Vérifier si la transaction a échoué
-              if (status?.value && status.value.err !== null && status.value.err !== undefined) {
-                return null; // Transaction échouée
-              }
-              
-              if (tx?.meta?.err) {
-                return null; // Transaction échouée dans les métadonnées
-              }
-              
-              if (tx) {
-                const mintTx = parseMintTransaction(tx);
-                if (mintTx && !EXCLUDED_TRANSACTIONS.includes(mintTx.signature)) {
-                  return mintTx;
-                }
-              }
-              
-              return null;
-            } catch (error: any) {
-              // En cas d'erreur, retourner null et gérer l'erreur plus tard
-              if (error?.message?.includes('429') || error?.message?.includes('Too Many Requests')) {
-                throw error; // Re-throw pour gérer les 429 séparément
-              }
-              return null;
-            }
-          });
+          if (processedCount > 0) {
+            await delay(MIN_REQUEST_DELAY);
+          }
           
           try {
-            const results = await Promise.all(batchPromises);
+            // Récupérer directement la transaction (plus rapide, évite une requête supplémentaire)
+            const tx = await connection.getParsedTransaction(sigInfo.signature, {
+              maxSupportedTransactionVersion: 0,
+            });
             
-            // Ajouter les transactions valides
-            for (const mintTx of results) {
-              if (mintTx) {
+            if (tx) {
+              // Vérifier si la transaction a échoué dans les métadonnées
+              if (tx.meta?.err) {
+                continue; // Transaction échouée, passer à la suivante
+              }
+              
+              const mintTx = parseMintTransaction(tx);
+              if (mintTx && !EXCLUDED_TRANSACTIONS.includes(mintTx.signature)) {
                 transactions.push(mintTx);
                 seenSignatures.add(mintTx.signature);
                 if (transactions.length % 10 === 0) {
@@ -713,14 +689,8 @@ export async function getMintTransactions(limit: number = 50, existingSignatures
                 }
               }
             }
-            
-            processedCount += batch.length;
+            processedCount++;
             consecutiveErrors = 0;
-            
-            // Délai entre les batches pour respecter les limites RPC
-            if (i + PARALLEL_BATCH_SIZE < signaturesToCheck.length) {
-              await delay(MIN_REQUEST_DELAY * 2); // Double délai entre les batches
-            }
           } catch (error: any) {
             consecutiveErrors++;
             // Gérer spécifiquement les erreurs 401 (Invalid API key)
@@ -729,13 +699,11 @@ export async function getMintTransactions(limit: number = 50, existingSignatures
               throw error; // Arrêter immédiatement si la clé API est invalide
             }
             if (error?.message?.includes('429') || error?.message?.includes('Too Many Requests')) {
-              // Pour les erreurs 429, attendre plus longtemps et réduire la vitesse
-              console.log(`[getMintTransactions] Rate limited (429), waiting 5 seconds before retry...`);
-              await delay(5000); // Délai réduit à 5 secondes pour les erreurs 429
+              // Pour les erreurs 429, attendre plus longtemps
+              console.log(`[getMintTransactions] Rate limited (429), waiting 10 seconds before retry...`);
+              await delay(10000); // Délai de 10 secondes pour les erreurs 429
               // Réduire la vitesse après une erreur 429
-              await delay(MIN_REQUEST_DELAY * 2); // Double délai après 429
-              // Retraiter le batch avec un délai plus long
-              i -= PARALLEL_BATCH_SIZE; // Revenir en arrière pour retraiter le batch
+              await delay(MIN_REQUEST_DELAY * 3); // Triple délai après 429
               continue;
             }
             if (error?.message?.includes('503') || error?.message?.includes('Service Unavailable')) {
