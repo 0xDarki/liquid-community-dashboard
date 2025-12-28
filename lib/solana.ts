@@ -603,16 +603,18 @@ export async function getMintTransactions(limit: number = 50): Promise<MintTrans
       let before: string | undefined = undefined;
       let hasMore = true;
       let pageCount = 0;
-      // Pour getAll, limiter à ~3000 transactions pour éviter le timeout Vercel (300s)
-      // Avec 1000 signatures par page, on peut traiter beaucoup plus efficacement
-      const maxPages = getAll ? 3 : 2; // Maximum 3 pages en mode getAll (3 pages × 1000 sigs = ~3000 transactions max)
+      // Pour getAll, traiter 1500 transactions par requête, donc 2 requêtes pour 3000 transactions
+      // L'API limite getSignaturesForAddress à 1000 signatures, donc on fait 2 requêtes de 1000 signatures
+      // et on traite 1500 transactions par batch
+      const maxPages = getAll ? 2 : 2; // Maximum 2 pages en mode getAll (2 pages × 1500 tx = ~3000 transactions max)
       const maxTransactionsForGetAll = 3000; // Limite pour éviter timeout
+      const transactionsPerBatch = 1500; // Traiter 1500 transactions par batch
       
       while (hasMore && transactions.length < (getAll ? maxTransactionsForGetAll : limit) && pageCount < maxPages) {
-        // Pour getAll, récupérer jusqu'à 1000 signatures par page (limite max de l'API Solana)
-        // Cela réduit drastiquement le nombre de requêtes getSignaturesForAddress
+        // Pour getAll, récupérer 1000 signatures par requête (limite max API)
+        // Mais traiter 1500 transactions par batch (2 requêtes pour 3000 transactions)
         const signatureLimit = getAll 
-          ? 1000 // En getAll, récupérer jusqu'à 1000 signatures par page (limite max API)
+          ? 1000 // L'API limite à 1000 signatures par requête
           : Math.min(10, maxSignatures - transactions.length);
         console.log(`[getMintTransactions] Fetching page ${pageCount + 1}, signatureLimit=${signatureLimit}, before=${before?.substring(0, 20)}...`);
         const signatures = await connection.getSignaturesForAddress(
@@ -633,7 +635,18 @@ export async function getMintTransactions(limit: number = 50): Promise<MintTrans
         
         before = signatures[signatures.length - 1].signature;
         
-        for (const sigInfo of signatures) {
+        // Pour getAll, traiter 1500 transactions par batch
+        // Batch 1 (page 0) : traiter toutes les 1000 signatures
+        // Batch 2 (page 1) : traiter seulement 500 signatures pour atteindre 1500 au total
+        const signaturesToProcess = getAll 
+          ? (pageCount === 0 
+              ? signatures.slice(0, Math.min(signatures.length, transactionsPerBatch))
+              : signatures.slice(0, Math.min(signatures.length, maxTransactionsForGetAll - transactions.length)))
+          : signatures;
+        
+        console.log(`[getMintTransactions] Processing ${signaturesToProcess.length} signatures (batch ${pageCount + 1})`);
+        
+        for (const sigInfo of signaturesToProcess) {
           if (EXCLUDED_TRANSACTIONS.includes(sigInfo.signature) || seenSignatures.has(sigInfo.signature)) {
             continue;
           }
@@ -733,14 +746,14 @@ export async function getMintTransactions(limit: number = 50): Promise<MintTrans
         let before: string | undefined = undefined;
         let hasMore = true;
         let pageCount = 0;
-        // Pour getAll, limiter à quelques pages pour éviter timeout
-        // Avec 1000 signatures par page, on peut traiter beaucoup plus efficacement
-        const maxPages = getAll ? 3 : 1; // 3 pages max en getAll pour token mint (3 × 1000 = ~3000 transactions max)
+        // Pour getAll, traiter 1500 transactions par requête, donc 2 requêtes pour 3000 transactions
+        const maxPages = getAll ? 2 : 1; // 2 pages max en getAll pour token mint (2 × 1500 = ~3000 transactions max)
+        const transactionsPerBatch = 1500; // Traiter 1500 transactions par batch
         
         while (hasMore && (getAll || transactions.length < limit) && pageCount < maxPages) {
-          // Utiliser 1000 signatures par page (limite max de l'API Solana) pour maximiser l'efficacité
+          // Utiliser 1000 signatures par requête (limite max API), mais traiter 1500 transactions par batch
           const tokenSignatureLimit = getAll 
-            ? 1000 // En getAll, récupérer jusqu'à 1000 signatures par page (limite max API)
+            ? 1000 // L'API limite à 1000 signatures par requête
             : Math.min(10, (limit * 2) - transactions.length);
           console.log(`[getMintTransactions] Token mint: Fetching page ${pageCount + 1}, signatureLimit=${tokenSignatureLimit}`);
           const tokenSignatures = await connection.getSignaturesForAddress(
@@ -757,8 +770,17 @@ export async function getMintTransactions(limit: number = 50): Promise<MintTrans
           }
           
           before = tokenSignatures[tokenSignatures.length - 1].signature;
-        
-          for (const sigInfo of tokenSignatures) {
+          
+          // Pour getAll, traiter 1500 transactions par batch
+          const tokenSignaturesToProcess = getAll 
+            ? (pageCount === 0 
+                ? tokenSignatures.slice(0, Math.min(tokenSignatures.length, transactionsPerBatch))
+                : tokenSignatures.slice(0, Math.min(tokenSignatures.length, maxTransactionsForGetAll - transactions.length)))
+            : tokenSignatures;
+          
+          console.log(`[getMintTransactions] Token mint: Processing ${tokenSignaturesToProcess.length} signatures (batch ${pageCount + 1})`);
+          
+          for (const sigInfo of tokenSignaturesToProcess) {
             if (EXCLUDED_TRANSACTIONS.includes(sigInfo.signature) || seenSignatures.has(sigInfo.signature)) {
               continue;
             }
