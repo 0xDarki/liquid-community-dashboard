@@ -56,6 +56,9 @@ export interface PoolStats {
   totalSolAdded: number;
   totalTokensAdded: number;
   totalTokensTransferred: number;
+  tokenPrice?: number | null;
+  tokenPriceSol?: number | null;
+  tokenPriceToken?: number | null;
 }
 
 // Fonction pour obtenir le solde SOL d'une adresse
@@ -1122,6 +1125,47 @@ export async function getPoolStats(): Promise<PoolStats> {
       totalTokensAdded: 0,
       totalTokensTransferred: 0,
     };
+  }
+}
+
+// Fonction pour récupérer le prix du token depuis la LP
+export async function getTokenPrice(): Promise<{ price: number; solBalance: number; tokenBalance: number } | null> {
+  try {
+    const publicKey = new PublicKey(LP_POOL_ADDRESS);
+    
+    // Récupérer le solde SOL de la LP
+    const solBalance = await connection.getBalance(publicKey);
+    const solBalanceInSol = solBalance / 1e9; // Convertir lamports en SOL
+    
+    // Récupérer le solde de tokens de la LP
+    const tokenMintPublicKey = new PublicKey(TOKEN_MINT_ADDRESS);
+    
+    // Trouver le compte token associé à la LP
+    const tokenAccounts = await connection.getParsedTokenAccountsByOwner(publicKey, {
+      mint: tokenMintPublicKey,
+    });
+    
+    let tokenBalance = 0;
+    if (tokenAccounts.value.length > 0) {
+      // Prendre le premier compte token (normalement il n'y en a qu'un)
+      const tokenAccount = tokenAccounts.value[0];
+      tokenBalance = tokenAccount.account.data.parsed.info.tokenAmount.uiAmount || 0;
+    }
+    
+    // Calculer le prix : SOL / Tokens
+    if (tokenBalance > 0 && solBalanceInSol > 0) {
+      const price = solBalanceInSol / tokenBalance;
+      return {
+        price,
+        solBalance: solBalanceInSol,
+        tokenBalance,
+      };
+    }
+    
+    return null;
+  } catch (error) {
+    console.error('Error getting token price:', error);
+    return null;
   }
 }
 

@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { getPoolStats, type TransferTransaction } from '@/lib/solana';
+import { getPoolStats, getTokenPrice, type TransferTransaction } from '@/lib/solana';
 import { getAllStoredMints, getStoredMints } from '@/lib/storage';
 import { cache } from '@/lib/cache';
 
@@ -40,6 +40,9 @@ export async function GET() {
     
     const totalTokensTransferred = transferTxs.reduce((sum, tx) => sum + tx.tokenAmount, 0);
     
+    // Récupérer le prix du token depuis la LP
+    const tokenPrice = await getTokenPrice();
+    
     const stats = {
       solBalance,
       tokenBalance,
@@ -48,6 +51,9 @@ export async function GET() {
       totalSolAdded,
       totalTokensAdded,
       totalTokensTransferred,
+      tokenPrice: tokenPrice?.price || null,
+      tokenPriceSol: tokenPrice?.solBalance || null,
+      tokenPriceToken: tokenPrice?.tokenBalance || null,
     };
     
     // Mettre en cache pendant 2 minutes pour réduire les requêtes

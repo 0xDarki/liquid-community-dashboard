@@ -215,7 +215,7 @@ export default function Dashboard() {
         {/* Stats Cards */}
         {stats && (
           <div className="mb-6">
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
               <StatsCard
                 title="Liquidity Additions"
                 value={stats.totalMints.toLocaleString('en-US')}
@@ -233,6 +233,13 @@ export default function Dashboard() {
                 })}
                 subtitle="Since the beginning"
               />
+              {stats.tokenPrice !== null && (
+                <StatsCard
+                  title="Token Price"
+                  value={`${stats.tokenPrice.toFixed(8)} SOL`}
+                  subtitle={`${stats.tokenPriceSol?.toFixed(4) || 0} SOL / ${stats.tokenPriceToken?.toLocaleString('en-US', { maximumFractionDigits: 2 }) || 0} tokens`}
+                />
+              )}
             </div>
           </div>
         )}
