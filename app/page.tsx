@@ -178,87 +178,6 @@ export default function Dashboard() {
                     ? `Sync All (${Math.ceil(timeUntilNextSync / 1000)}s)`
                     : 'Sync All'}
               </button>
-              <button
-                onClick={async () => {
-                  if (!confirm('Import transactions from mints.json in Vercel Blob Storage? This will merge with existing data.')) {
-                    return;
-                  }
-                  setSyncing(true);
-                  try {
-                    const res = await fetch('/api/mints/import', { method: 'POST' });
-                    const data = await res.json();
-                    if (res.ok && data.success) {
-                      alert(`Import successful: ${data.imported} new transactions imported. Total: ${data.total}`);
-                      fetchData(); // Rafraîchir les données
-                    } else {
-                      alert(`Import failed: ${data.error || 'Unknown error'}`);
-                    }
-                  } catch (error: any) {
-                    alert(`Import error: ${error.message}`);
-                  } finally {
-                    setSyncing(false);
-                  }
-                }}
-                disabled={syncing || loading}
-                className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors text-sm font-medium"
-                title="Import transactions from mints.json in Vercel Blob Storage"
-              >
-                {syncing ? 'Importing...' : 'Import from Blob'}
-              </button>
-              <button
-                onClick={async () => {
-                  if (!confirm('Generate historical data points from mints.json? This will create points every 12h based on transaction timestamps.')) {
-                    return;
-                  }
-                  setSyncing(true);
-                  try {
-                    const res = await fetch('/api/history/generate', { method: 'POST' });
-                    const data = await res.json();
-                    if (res.ok && data.success) {
-                      alert(`History generation successful: ${data.generated} new points generated. Total: ${data.total}`);
-                      fetchData(); // Rafraîchir les données pour afficher les nouveaux graphiques
-                    } else {
-                      alert(`History generation failed: ${data.error || 'Unknown error'}`);
-                    }
-                  } catch (error: any) {
-                    alert(`History generation error: ${error.message}`);
-                  } finally {
-                    setSyncing(false);
-                  }
-                }}
-                disabled={syncing || loading}
-                className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors text-sm font-medium"
-                title="Generate historical data points from mints.json (every 12h)"
-              >
-                {syncing ? 'Generating...' : 'Generate History'}
-              </button>
-              <button
-                onClick={async () => {
-                  if (!confirm('Clear all historical data? This action cannot be undone.')) {
-                    return;
-                  }
-                  setSyncing(true);
-                  try {
-                    const res = await fetch('/api/history/clean', { method: 'POST' });
-                    const data = await res.json();
-                    if (res.ok && data.success) {
-                      alert('History cleared successfully');
-                      fetchData(); // Rafraîchir les données
-                    } else {
-                      alert(`Failed to clear history: ${data.error || 'Unknown error'}`);
-                    }
-                  } catch (error: any) {
-                    alert(`Error clearing history: ${error.message}`);
-                  } finally {
-                    setSyncing(false);
-                  }
-                }}
-                disabled={syncing || loading}
-                className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors text-sm font-medium"
-                title="Clear all historical data"
-              >
-                {syncing ? 'Clearing...' : 'Clean History'}
-              </button>
             </div>
           </div>
           <div className="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
@@ -330,8 +249,8 @@ export default function Dashboard() {
           </div>
         )}
 
-        {/* Historical Charts */}
-        {history.length > 0 && (
+        {/* Historical Charts - Hidden for now */}
+        {false && history.length > 0 && (
           <div className="mb-6">
             <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-4">
               Historical Statistics (12h intervals)
