@@ -47,7 +47,7 @@ export default function StatsChart({ data, title, dataKey, color, formatter }: S
               border: '1px solid #e5e7eb',
               borderRadius: '8px',
             }}
-            formatter={(value: number) => formatValue(value)}
+            formatter={(value: number | undefined) => value != null ? formatValue(value) : 'N/A'}
             labelFormatter={(label) => `Date: ${label}`}
           />
           <Legend />
