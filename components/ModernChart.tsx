@@ -533,7 +533,7 @@ export default function ModernChart({ transactions }: ModernChartProps) {
       {/* Graphiques côte à côte */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
         {/* Graphique en aires - SOL et Tokens ajoutés */}
-        <div className="bg-white dark:bg-gray-800 rounded-xl shadow-lg p-3 border border-gray-200 dark:border-gray-700">
+        <div className="bg-white dark:bg-gray-800 rounded-xl shadow-lg p-3 border border-gray-200 dark:border-gray-700 flex flex-col">
         <div className="flex items-center justify-between mb-2">
           <h3 className="text-base font-semibold text-gray-900 dark:text-white">
             Liquidity Added Over Time (1h intervals)
@@ -542,6 +542,7 @@ export default function ModernChart({ transactions }: ModernChartProps) {
             {chartData.length} points
           </span>
         </div>
+        <div className="flex-1 flex items-center justify-center">
         <ResponsiveContainer width="100%" height={260}>
           <AreaChart data={chartData} margin={{ top: 5, right: 15, left: 5, bottom: 50 }}>
             <defs>
@@ -611,9 +612,10 @@ export default function ModernChart({ transactions }: ModernChartProps) {
           </AreaChart>
         </ResponsiveContainer>
         </div>
+        </div>
 
         {/* Graphique cumulatif */}
-        <div className="bg-white dark:bg-gray-800 rounded-xl shadow-lg p-3 border border-gray-200 dark:border-gray-700">
+        <div className="bg-white dark:bg-gray-800 rounded-xl shadow-lg p-3 border border-gray-200 dark:border-gray-700 flex flex-col">
         <div className="flex items-center justify-between mb-2">
           <h3 className="text-base font-semibold text-gray-900 dark:text-white">
             Cumulative Liquidity Over Time
@@ -622,6 +624,7 @@ export default function ModernChart({ transactions }: ModernChartProps) {
             {chartData.length} points
           </span>
         </div>
+        <div className="flex-1 flex items-center justify-center">
         <ResponsiveContainer width="100%" height={260}>
           <AreaChart data={chartData} margin={{ top: 5, right: 15, left: 5, bottom: 50 }}>
             <defs>
@@ -694,6 +697,7 @@ export default function ModernChart({ transactions }: ModernChartProps) {
             />
           </AreaChart>
         </ResponsiveContainer>
+        </div>
         </div>
       </div>
     </div>
