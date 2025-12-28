@@ -483,8 +483,10 @@ export default function ModernChart({ transactions }: ModernChartProps) {
         </div>
       </div>
 
-      {/* Graphique en aires - SOL et Tokens ajoutés */}
-      <div className="bg-white dark:bg-gray-800 rounded-xl shadow-lg p-4 border border-gray-200 dark:border-gray-700">
+      {/* Graphiques côte à côte */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        {/* Graphique en aires - SOL et Tokens ajoutés */}
+        <div className="bg-white dark:bg-gray-800 rounded-xl shadow-lg p-4 border border-gray-200 dark:border-gray-700">
         <div className="flex items-center justify-between mb-3">
           <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
             Liquidity Added Over Time (1h intervals)
@@ -561,10 +563,10 @@ export default function ModernChart({ transactions }: ModernChartProps) {
             />
           </AreaChart>
         </ResponsiveContainer>
-      </div>
+        </div>
 
-      {/* Graphique cumulatif */}
-      <div className="bg-white dark:bg-gray-800 rounded-xl shadow-lg p-4 border border-gray-200 dark:border-gray-700">
+        {/* Graphique cumulatif */}
+        <div className="bg-white dark:bg-gray-800 rounded-xl shadow-lg p-4 border border-gray-200 dark:border-gray-700">
         <div className="flex items-center justify-between mb-3">
           <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
             Cumulative Liquidity Over Time
@@ -639,6 +641,7 @@ export default function ModernChart({ transactions }: ModernChartProps) {
             />
           </AreaChart>
         </ResponsiveContainer>
+        </div>
       </div>
     </div>
   );
