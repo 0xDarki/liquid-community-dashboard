@@ -611,7 +611,7 @@ function delay(ms: number): Promise<void> {
 // 10 req/s = 100ms entre requêtes minimum
 // Utiliser 120ms pour être sûr de rester en dessous même avec les retries automatiques
 // Augmenter le délai pour éviter les 429 (10 req/s = 100ms minimum, utiliser 150ms pour être sûr)
-const MIN_REQUEST_DELAY = 150; // 150ms donne ~6.7 req/s max, bien en dessous de 10 req/s pour éviter 429
+export const MIN_REQUEST_DELAY = 150; // 150ms donne ~6.7 req/s max, bien en dessous de 10 req/s pour éviter 429
 
 // Fonction pour obtenir les transactions MINT récentes
 export async function getMintTransactions(limit: number = 50, existingSignatures?: Set<string>): Promise<MintTransaction[]> {

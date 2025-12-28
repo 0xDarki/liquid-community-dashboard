@@ -39,10 +39,131 @@ export async function POST() {
     });
     
     try {
-      // Récupérer toutes les transactions (getAll=true, limit=0)
-      // Cela va récupérer jusqu'à ~3000 transactions par batch
-      // L'utilisateur peut appeler cette route plusieurs fois pour récupérer progressivement
-      const result = await syncMints(0, true);
+      // Pour la récupération, on veut récupérer TOUTES les transactions depuis le début
+      // On va utiliser getSignaturesForAddress directement pour paginer manuellement
+      const { connection, LP_POOL_ADDRESS, parseMintTransaction, EXCLUDED_TRANSACTIONS, MIN_REQUEST_DELAY } = await import('@/lib/solana');
+      const { PublicKey } = await import('@solana/web3.js');
+      const { loadStoredMints, saveStoredMints } = await import('@/lib/storage');
+      
+      console.log('[Recover] Fetching all transactions from blockchain using direct pagination...');
+      
+      // Charger les transactions existantes pour éviter les doublons
+      const existingMints = await loadStoredMints();
+      const existingSignatures = new Set(existingMints.map(m => m.signature));
+      console.log(`[Recover] Already have ${existingMints.length} transactions stored`);
+      
+      const publicKey = new PublicKey(LP_POOL_ADDRESS);
+      const allNewTransactions: any[] = [];
+      let before: string | undefined = undefined;
+      let pageCount = 0;
+      const maxPages = 50; // Augmenter le nombre de pages pour récupérer plus de transactions
+      const signaturesPerPage = 1000; // Maximum par requête API
+      let hasMore = true;
+      
+      // Fonction helper pour delay
+      const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+      
+      // Récupérer toutes les signatures par pagination
+      while (hasMore && pageCount < maxPages) {
+        console.log(`[Recover] Fetching signatures page ${pageCount + 1}/${maxPages}...`);
+        
+        try {
+          await delay(MIN_REQUEST_DELAY);
+          
+          const signatures = await connection.getSignaturesForAddress(publicKey, {
+            limit: signaturesPerPage,
+            before: before,
+          });
+          
+          if (signatures.length === 0) {
+            console.log(`[Recover] No more signatures found, stopping`);
+            hasMore = false;
+            break;
+          }
+          
+          console.log(`[Recover] Got ${signatures.length} signatures on page ${pageCount + 1}`);
+          
+          // Traiter chaque signature pour récupérer les transactions MINT
+          let processedInPage = 0;
+          for (const sigInfo of signatures) {
+            // Ignorer les transactions exclues ou déjà stockées
+            if (EXCLUDED_TRANSACTIONS.includes(sigInfo.signature) || existingSignatures.has(sigInfo.signature)) {
+              continue;
+            }
+            
+            try {
+              await delay(MIN_REQUEST_DELAY);
+              
+              const tx = await connection.getParsedTransaction(sigInfo.signature, {
+                maxSupportedTransactionVersion: 0,
+              });
+              
+              if (tx && !tx.meta?.err) {
+                const mintTx = parseMintTransaction(tx);
+                if (mintTx && !EXCLUDED_TRANSACTIONS.includes(mintTx.signature)) {
+                  allNewTransactions.push(mintTx);
+                  existingSignatures.add(mintTx.signature);
+                  processedInPage++;
+                  
+                  if (allNewTransactions.length % 100 === 0) {
+                    console.log(`[Recover] Found ${allNewTransactions.length} new transactions so far...`);
+                  }
+                }
+              }
+            } catch (error: any) {
+              // Ignorer les erreurs individuelles et continuer
+              if (error?.message?.includes('429') || error?.message?.includes('503')) {
+                console.warn(`[Recover] Rate limited while processing signature, waiting 5 seconds...`);
+                await delay(5000);
+              }
+              continue;
+            }
+          }
+          
+          console.log(`[Recover] Page ${pageCount + 1}: Processed ${processedInPage} new transactions. Total: ${allNewTransactions.length}`);
+          
+          // Mettre à jour le before pour la pagination
+          before = signatures[signatures.length - 1].signature;
+          pageCount++;
+          
+          // Si on a récupéré moins de signatures que la limite, on a probablement atteint la fin
+          if (signatures.length < signaturesPerPage) {
+            console.log(`[Recover] Last page had less than ${signaturesPerPage} signatures, likely reached the end`);
+            hasMore = false;
+            break;
+          }
+          
+          // Pause entre les pages pour éviter les rate limits
+          if (hasMore && pageCount < maxPages) {
+            await delay(1000);
+          }
+        } catch (error: any) {
+          console.error(`[Recover] Error fetching page ${pageCount + 1}:`, error);
+          // Si erreur 429 ou 503, attendre plus longtemps
+          if (error?.message?.includes('429') || error?.message?.includes('503') || error?.message?.includes('Rate limit')) {
+            console.warn(`[Recover] Rate limited, waiting 10 seconds before continuing...`);
+            await delay(10000);
+            pageCount++;
+            continue;
+          }
+          // Pour les autres erreurs, arrêter
+          hasMore = false;
+          break;
+        }
+      }
+      
+      console.log(`[Recover] Finished fetching. Total new transactions: ${allNewTransactions.length}, pages processed: ${pageCount}`);
+      
+      // Fusionner avec les transactions existantes
+      const updated = [...existingMints, ...allNewTransactions].sort((a, b) => b.timestamp - a.timestamp);
+      
+      console.log(`[Recover] Saving ${updated.length} total transactions (${existingMints.length} existing + ${allNewTransactions.length} new)...`);
+      await saveStoredMints(updated);
+      
+      const result = {
+        added: allNewTransactions.length,
+        total: updated.length,
+      };
       
       // Mettre à jour le timestamp de dernière synchronisation
       await saveSyncState({
