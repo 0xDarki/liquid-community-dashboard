@@ -306,7 +306,7 @@ export async function saveStoredMints(mints: MintTransaction[]): Promise<void> {
 }
 
 // Charger l'état de synchronisation
-async function loadSyncState(): Promise<SyncState> {
+export async function loadSyncState(): Promise<SyncState> {
   if (useBlobStorage()) {
     return loadSyncStateFromBlob();
   }
@@ -314,7 +314,7 @@ async function loadSyncState(): Promise<SyncState> {
 }
 
 // Sauvegarder l'état de synchronisation
-async function saveSyncState(state: SyncState): Promise<void> {
+export async function saveSyncState(state: SyncState): Promise<void> {
   if (useBlobStorage()) {
     await saveSyncStateToBlob(state);
   } else {

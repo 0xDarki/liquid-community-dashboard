@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { syncMints } from '@/lib/storage';
+import { syncMints, loadSyncState, saveSyncState } from '@/lib/storage';
 
 export const dynamic = 'force-dynamic'; // Force dynamic rendering
 export const revalidate = 0; // Disable static generation
@@ -15,15 +15,37 @@ export async function POST(request: Request) {
     // Sinon, utiliser la limite fournie ou 100 par défaut
     const limit = getAll ? 0 : parseInt(limitParam || '100', 10);
     
-    const result = await syncMints(limit, getAll);
-    return NextResponse.json({ 
-      success: true, 
-      added: result.added,
-      total: result.total,
-      message: getAll 
-        ? `Added ${result.added} new transactions. Total: ${result.total}. Note: Sync processes 1500 transactions per batch (2 batches = ~3000 transactions) to stay under Vercel's 300s timeout. You can run sync again to continue fetching more transactions.`
-        : `Added ${result.added} new transactions. Total: ${result.total}`
-    });
+    // Charger l'état actuel
+    const currentState = await loadSyncState();
+    
+    // Marquer comme en cours de synchronisation
+    await saveSyncState({ ...currentState, isSyncing: true });
+    
+    try {
+      const result = await syncMints(limit, getAll);
+      
+      // Mettre à jour le timestamp de dernière synchronisation
+      await saveSyncState({
+        lastSync: Date.now(),
+        isSyncing: false,
+      });
+      
+      return NextResponse.json({ 
+        success: true, 
+        added: result.added,
+        total: result.total,
+        message: getAll 
+          ? `Added ${result.added} new transactions. Total: ${result.total}. Note: Sync processes 1500 transactions per batch (2 batches = ~3000 transactions) to stay under Vercel's 300s timeout. You can run sync again to continue fetching more transactions.`
+          : `Added ${result.added} new transactions. Total: ${result.total}`
+      });
+    } catch (error) {
+      // En cas d'erreur, réinitialiser le flag
+      await saveSyncState({
+        ...currentState,
+        isSyncing: false,
+      });
+      throw error;
+    }
   } catch (error: any) {
     console.error('Error syncing mints:', error);
     return NextResponse.json(
@@ -43,15 +65,37 @@ export async function GET(request: Request) {
     // Sinon, utiliser la limite fournie ou 100 par défaut
     const limit = getAll ? 0 : parseInt(limitParam || '100', 10);
     
-    const result = await syncMints(limit, getAll);
-    return NextResponse.json({ 
-      success: true, 
-      added: result.added,
-      total: result.total,
-      message: getAll 
-        ? `Added ${result.added} new transactions. Total: ${result.total}. Note: Sync processes 1500 transactions per batch (2 batches = ~3000 transactions) to stay under Vercel's 300s timeout. You can run sync again to continue fetching more transactions.`
-        : `Added ${result.added} new transactions. Total: ${result.total}`
-    });
+    // Charger l'état actuel
+    const currentState = await loadSyncState();
+    
+    // Marquer comme en cours de synchronisation
+    await saveSyncState({ ...currentState, isSyncing: true });
+    
+    try {
+      const result = await syncMints(limit, getAll);
+      
+      // Mettre à jour le timestamp de dernière synchronisation
+      await saveSyncState({
+        lastSync: Date.now(),
+        isSyncing: false,
+      });
+      
+      return NextResponse.json({ 
+        success: true, 
+        added: result.added,
+        total: result.total,
+        message: getAll 
+          ? `Added ${result.added} new transactions. Total: ${result.total}. Note: Sync processes 1500 transactions per batch (2 batches = ~3000 transactions) to stay under Vercel's 300s timeout. You can run sync again to continue fetching more transactions.`
+          : `Added ${result.added} new transactions. Total: ${result.total}`
+      });
+    } catch (error) {
+      // En cas d'erreur, réinitialiser le flag
+      await saveSyncState({
+        ...currentState,
+        isSyncing: false,
+      });
+      throw error;
+    }
   } catch (error: any) {
     console.error('Error syncing mints:', error);
     return NextResponse.json(

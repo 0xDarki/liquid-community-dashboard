@@ -30,12 +30,13 @@ export default function Dashboard() {
       // Récupérer toutes les transactions MINT stockées
       // Ne pas synchroniser automatiquement pour éviter trop de requêtes
       // La synchronisation peut être faite manuellement via /api/mints/sync
-      const [statsRes, mintsRes, transfersRes, historyRes, averageRes] = await Promise.all([
+      const [statsRes, mintsRes, transfersRes, historyRes, averageRes, syncStateRes] = await Promise.all([
         fetch('/api/stats'),
         fetch('/api/mints?limit=0'), // 0 = toutes les transactions stockées
         fetch('/api/transfers?limit=20'), // Réduit à 20 pour les transfers
         fetch('/api/history'),
         fetch('/api/stats/average'),
+        fetch('/api/sync-state'), // Récupérer l'état de synchronisation partagé
       ]);
 
       // Vérifier les erreurs de connexion
@@ -59,12 +60,13 @@ export default function Dashboard() {
         throw new Error(errorData.error || 'Failed to fetch data from API');
       }
 
-      const [poolStats, mints, transfers, historyData, averageData] = await Promise.all([
+      const [poolStats, mints, transfers, historyData, averageData, syncState] = await Promise.all([
         statsRes.json(),
         mintsRes.json(),
         transfersRes.json(),
         historyRes.json().catch(() => []), // Si l'API history échoue, utiliser un tableau vide
         averageRes.json().catch(() => null), // Si l'API average échoue, utiliser null
+        syncStateRes.json().catch(() => ({ lastSync: 0, isSyncing: false })), // Si l'API sync-state échoue, utiliser des valeurs par défaut
       ]);
 
       setStats(poolStats);
@@ -73,6 +75,11 @@ export default function Dashboard() {
       setHistory(historyData);
       setAverageStats(averageData);
       setLastUpdate(new Date());
+      
+      // Mettre à jour le lastSyncTime depuis le sync state partagé
+      if (syncState.lastSync > 0) {
+        setLastSyncTime(new Date(syncState.lastSync));
+      }
     } catch (error) {
       console.error('Error fetching data:', error);
       if (error instanceof Error) {
@@ -100,25 +107,37 @@ export default function Dashboard() {
     return () => clearInterval(interval);
   }, []);
 
-  // Mettre à jour le compte à rebours pour le bouton Sync All
+  // Mettre à jour le compte à rebours pour le bouton Update en utilisant le sync state partagé
   useEffect(() => {
-    const updateCountdown = () => {
-      if (lastSyncTime) {
-        const now = new Date().getTime();
-        const lastSync = lastSyncTime.getTime();
-        const twoMinutes = 2 * 60 * 1000; // 2 minutes en millisecondes
-        const timeElapsed = now - lastSync;
-        const timeRemaining = Math.max(0, twoMinutes - timeElapsed);
-        setTimeUntilNextSync(timeRemaining);
-      } else {
-        setTimeUntilNextSync(0);
+    const updateCountdown = async () => {
+      try {
+        // Récupérer le sync state partagé depuis le serveur
+        const res = await fetch('/api/sync-state');
+        if (res.ok) {
+          const syncState = await res.json();
+          if (syncState.lastSync > 0) {
+            const now = Date.now();
+            const lastSync = syncState.lastSync;
+            const twoMinutes = 2 * 60 * 1000; // 2 minutes en millisecondes
+            const timeElapsed = now - lastSync;
+            const timeRemaining = Math.max(0, twoMinutes - timeElapsed);
+            setTimeUntilNextSync(timeRemaining);
+            
+            // Mettre à jour le lastSyncTime local
+            setLastSyncTime(new Date(lastSync));
+          } else {
+            setTimeUntilNextSync(0);
+          }
+        }
+      } catch (error) {
+        console.error('Error fetching sync state:', error);
       }
     };
 
     updateCountdown();
-    const interval = setInterval(updateCountdown, 1000); // Mettre à jour toutes les secondes
+    const interval = setInterval(updateCountdown, 5000); // Mettre à jour toutes les 5 secondes
     return () => clearInterval(interval);
-  }, [lastSyncTime]);
+  }, []);
 
   if (loading && !stats) {
     return (
@@ -160,7 +179,7 @@ export default function Dashboard() {
                     const res = await fetch('/api/mints/sync?limit=60');
                     const data = await res.json();
                     if (res.ok && data.success) {
-                      setLastSyncTime(new Date()); // Mettre à jour le temps de dernière sync
+                      // Le sync state est maintenant mis à jour côté serveur
                       // Rafraîchir toutes les données pour qu'elles soient à jour
                       await fetchData();
                     } else {
