@@ -12,10 +12,20 @@ async function canSync(): Promise<{ allowed: boolean; reason?: string; timeRemai
   const twoMinutes = 2 * 60 * 1000; // 2 minutes en millisecondes
   const fiveMinutes = 5 * 60 * 1000; // 5 minutes en millisecondes
   
+  console.log('[canSync] Current state:', {
+    isSyncing: currentState.isSyncing,
+    lastSync: currentState.lastSync,
+    lastSyncDate: currentState.lastSync > 0 ? new Date(currentState.lastSync).toISOString() : 'never',
+    syncStartTime: currentState.syncStartTime,
+    now: new Date(now).toISOString(),
+  });
+  
   // Si isSyncing est true, vérifier si c'est bloqué depuis trop longtemps
   if (currentState.isSyncing) {
     const syncStartTime = currentState.syncStartTime || currentState.lastSync || now;
     const timeSinceSyncStart = now - syncStartTime;
+    
+    console.log('[canSync] Sync in progress, time since start:', Math.floor(timeSinceSyncStart / 1000), 'seconds');
     
     // Si le sync est bloqué depuis plus de 5 minutes, le réinitialiser et permettre un nouveau sync
     if (timeSinceSyncStart > fiveMinutes) {
@@ -28,6 +38,7 @@ async function canSync(): Promise<{ allowed: boolean; reason?: string; timeRemai
       // Continuer avec la vérification du lastSync
     } else {
       // Sync en cours depuis moins de 5 minutes, refuser
+      console.log('[canSync] Sync in progress, refusing new sync');
       return {
         allowed: false,
         reason: 'A sync is already in progress',
@@ -38,8 +49,11 @@ async function canSync(): Promise<{ allowed: boolean; reason?: string; timeRemai
   // Vérifier si une sync a été effectuée dans les 2 dernières minutes
   if (currentState.lastSync > 0) {
     const timeSinceLastSync = now - currentState.lastSync;
+    console.log('[canSync] Time since last sync:', Math.floor(timeSinceLastSync / 1000), 'seconds');
+    
     if (timeSinceLastSync < twoMinutes) {
       const timeRemaining = Math.ceil((twoMinutes - timeSinceLastSync) / 1000); // en secondes
+      console.log('[canSync] Refusing sync, time remaining:', timeRemaining, 'seconds');
       return {
         allowed: false,
         reason: `Please wait ${timeRemaining} seconds before syncing again. Last sync was ${Math.floor(timeSinceLastSync / 1000)} seconds ago.`,
@@ -48,6 +62,7 @@ async function canSync(): Promise<{ allowed: boolean; reason?: string; timeRemai
     }
   }
   
+  console.log('[canSync] Sync allowed');
   return { allowed: true };
 }
 
