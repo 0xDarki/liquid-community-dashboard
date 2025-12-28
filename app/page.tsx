@@ -230,7 +230,7 @@ export default function Dashboard() {
   // Mettre à jour le compte à rebours pour le bouton Update en utilisant le sync state partagé
   useEffect(() => {
     let lastFetchTime = 0;
-    const FETCH_INTERVAL = 10000; // 10 secondes entre chaque fetch pour éviter trop de requêtes
+    const FETCH_INTERVAL = 120000; // 2 minutes entre chaque fetch pour éviter trop de requêtes
     
     const updateCountdown = async () => {
       const now = Date.now();

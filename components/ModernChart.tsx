@@ -19,8 +19,8 @@ interface ModernChartProps {
 }
 
 export default function ModernChart({ transactions }: ModernChartProps) {
-  // Grouper les transactions par intervalles de 6 heures
-  const groupBy6Hours = (txs: MintTransaction[]): ChartDataPoint[] => {
+  // Grouper les transactions par intervalles de 1 heure
+  const groupBy1Hour = (txs: MintTransaction[]): ChartDataPoint[] => {
     if (txs.length === 0) return [];
 
     // Trier par timestamp croissant (du plus ancien au plus récent)
@@ -29,15 +29,15 @@ export default function ModernChart({ transactions }: ModernChartProps) {
     // Trouver le timestamp de la première transaction
     const firstTimestamp = sorted[0].timestamp;
     
-    // Arrondir au début de l'intervalle de 6 heures le plus proche
-    const sixHoursInSeconds = 6 * 60 * 60;
-    const startTime = Math.floor(firstTimestamp / sixHoursInSeconds) * sixHoursInSeconds;
+    // Arrondir au début de l'intervalle de 1 heure le plus proche
+    const oneHourInSeconds = 60 * 60;
+    const startTime = Math.floor(firstTimestamp / oneHourInSeconds) * oneHourInSeconds;
 
-    // Grouper par intervalles de 6 heures
+    // Grouper par intervalles de 1 heure
     const groups = new Map<number, MintTransaction[]>();
     
     sorted.forEach(tx => {
-      const intervalStart = Math.floor((tx.timestamp - startTime) / sixHoursInSeconds) * sixHoursInSeconds + startTime;
+      const intervalStart = Math.floor((tx.timestamp - startTime) / oneHourInSeconds) * oneHourInSeconds + startTime;
       if (!groups.has(intervalStart)) {
         groups.set(intervalStart, []);
       }
@@ -74,17 +74,17 @@ export default function ModernChart({ transactions }: ModernChartProps) {
     return dataPoints;
   };
 
-  const chartData = groupBy6Hours(transactions);
+  const chartData = groupBy1Hour(transactions);
 
   if (chartData.length === 0) {
     return (
       <div className="bg-white dark:bg-gray-800 rounded-xl shadow-lg p-6 border border-gray-200 dark:border-gray-700">
         <h3 className="text-xl font-semibold text-gray-900 dark:text-white mb-4">
-          Historical Charts (6h intervals)
+          Historical Charts (1h intervals)
         </h3>
         <p className="text-gray-500 dark:text-gray-400 text-center py-8">
           {transactions.length === 0 
-            ? 'Loading data from Vercel Blob Storage...' 
+            ? 'Loading data from Supabase...' 
             : 'No data available for charting'}
         </p>
       </div>
@@ -114,7 +114,7 @@ export default function ModernChart({ transactions }: ModernChartProps) {
       {/* Graphique en aires - SOL et Tokens ajoutés */}
       <div className="bg-white dark:bg-gray-800 rounded-xl shadow-lg p-6 border border-gray-200 dark:border-gray-700">
         <h3 className="text-xl font-semibold text-gray-900 dark:text-white mb-6">
-          Liquidity Added Over Time (6h intervals)
+          Liquidity Added Over Time (1h intervals)
         </h3>
         <ResponsiveContainer width="100%" height={400}>
           <AreaChart data={chartData} margin={{ top: 10, right: 30, left: 0, bottom: 0 }}>
@@ -179,7 +179,7 @@ export default function ModernChart({ transactions }: ModernChartProps) {
       {/* Graphique en barres - Nombre de transactions */}
       <div className="bg-white dark:bg-gray-800 rounded-xl shadow-lg p-6 border border-gray-200 dark:border-gray-700">
         <h3 className="text-xl font-semibold text-gray-900 dark:text-white mb-6">
-          Transaction Count per 6h Interval
+          Transaction Count per 1h Interval
         </h3>
         <ResponsiveContainer width="100%" height={300}>
           <BarChart data={chartData} margin={{ top: 10, right: 30, left: 0, bottom: 0 }}>
