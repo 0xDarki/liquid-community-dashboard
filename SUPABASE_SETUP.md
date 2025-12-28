@@ -12,12 +12,19 @@ Ce projet utilise Supabase pour stocker les données au lieu de Vercel Blob Stor
 
 ### 2. Créer les tables dans Supabase
 
+**⚠️ IMPORTANT : Vous devez créer les tables avant d'utiliser l'application !**
+
 Exécutez le script SQL fourni dans `supabase-schema.sql` dans l'éditeur SQL de votre projet Supabase :
 
 1. Allez dans votre projet Supabase
 2. Ouvrez l'éditeur SQL (SQL Editor dans le menu de gauche)
-3. Copiez-collez le contenu de `supabase-schema.sql`
-4. Exécutez le script
+3. Copiez-collez le **contenu complet** de `supabase-schema.sql`
+4. Cliquez sur "Run" ou appuyez sur `Ctrl+Enter` (ou `Cmd+Enter` sur Mac) pour exécuter le script
+5. Vérifiez que les 4 tables ont été créées : `mints`, `sync_state`, `price`, `history`
+
+**Vérification :**
+- Vous pouvez vérifier que les tables existent en visitant `/api/supabase/check` dans votre application
+- Ou allez dans Supabase > Table Editor pour voir les tables créées
 
 ### 3. Configurer les variables d'environnement
 

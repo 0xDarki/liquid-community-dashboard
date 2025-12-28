@@ -83,11 +83,20 @@ async function loadMintsFromSupabase(): Promise<MintTransaction[]> {
         console.log('[loadMintsFromSupabase] No data found, returning empty array');
         return [];
       }
+      if (error.code === 'PGRST205') {
+        // Table not found
+        console.error('[loadMintsFromSupabase] Table "mints" does not exist. Please run the SQL schema from supabase-schema.sql in your Supabase SQL Editor.');
+        return [];
+      }
       throw error;
     }
 
     return data?.data || [];
   } catch (error: any) {
+    if (error?.code === 'PGRST205') {
+      console.error('[loadMintsFromSupabase] Table "mints" does not exist. Please run the SQL schema from supabase-schema.sql in your Supabase SQL Editor.');
+      return [];
+    }
     console.error('Error loading mints from Supabase:', error);
     return [];
   }
@@ -109,11 +118,19 @@ async function saveMintsToSupabase(mints: MintTransaction[]): Promise<void> {
       });
 
     if (error) {
+      if (error.code === 'PGRST205') {
+        console.error('[saveMintsToSupabase] Table "mints" does not exist. Please run the SQL schema from supabase-schema.sql in your Supabase SQL Editor.');
+        throw new Error('Supabase table "mints" does not exist. Please run the SQL schema from supabase-schema.sql in your Supabase SQL Editor.');
+      }
       throw error;
     }
 
     console.log(`[saveMintsToSupabase] Successfully saved ${mints.length} transactions`);
-  } catch (error) {
+  } catch (error: any) {
+    if (error?.code === 'PGRST205') {
+      console.error('[saveMintsToSupabase] Table "mints" does not exist. Please run the SQL schema from supabase-schema.sql in your Supabase SQL Editor.');
+      throw new Error('Supabase table "mints" does not exist. Please run the SQL schema from supabase-schema.sql in your Supabase SQL Editor.');
+    }
     console.error('Error saving mints to Supabase:', error);
     throw error;
   }
@@ -133,6 +150,11 @@ async function loadSyncStateFromSupabase(): Promise<SyncState> {
       if (error.code === 'PGRST116') {
         // No rows returned
         console.log('[loadSyncStateFromSupabase] No data found, returning default state');
+        return { lastSync: 0, isSyncing: false };
+      }
+      if (error.code === 'PGRST205') {
+        // Table not found
+        console.error('[loadSyncStateFromSupabase] Table "sync_state" does not exist. Please run the SQL schema from supabase-schema.sql in your Supabase SQL Editor.');
         return { lastSync: 0, isSyncing: false };
       }
       throw error;
@@ -161,6 +183,10 @@ async function loadSyncStateFromSupabase(): Promise<SyncState> {
 
     return state;
   } catch (error: any) {
+    if (error?.code === 'PGRST205') {
+      console.error('[loadSyncStateFromSupabase] Table "sync_state" does not exist. Please run the SQL schema from supabase-schema.sql in your Supabase SQL Editor.');
+      return { lastSync: 0, isSyncing: false };
+    }
     console.error('Error loading sync state from Supabase:', error);
     return { lastSync: 0, isSyncing: false };
   }
@@ -181,6 +207,10 @@ async function saveSyncStateToSupabase(state: SyncState): Promise<void> {
       });
 
     if (error) {
+      if (error.code === 'PGRST205') {
+        console.error('[saveSyncStateToSupabase] Table "sync_state" does not exist. Please run the SQL schema from supabase-schema.sql in your Supabase SQL Editor.');
+        return; // Ne pas faire échouer, juste logger l'erreur
+      }
       throw error;
     }
 
@@ -191,7 +221,11 @@ async function saveSyncStateToSupabase(state: SyncState): Promise<void> {
     } catch (cacheError) {
       // Ignorer les erreurs de cache
     }
-  } catch (error) {
+  } catch (error: any) {
+    if (error?.code === 'PGRST205') {
+      console.error('[saveSyncStateToSupabase] Table "sync_state" does not exist. Please run the SQL schema from supabase-schema.sql in your Supabase SQL Editor.');
+      return; // Ne pas faire échouer, juste logger l'erreur
+    }
     console.error('Error saving sync state to Supabase:', error);
   }
 }
@@ -211,11 +245,20 @@ async function loadPriceFromSupabase(): Promise<TokenPrice | null> {
         // No rows returned
         return null;
       }
+      if (error.code === 'PGRST205') {
+        // Table not found
+        console.error('[loadPriceFromSupabase] Table "price" does not exist. Please run the SQL schema from supabase-schema.sql in your Supabase SQL Editor.');
+        return null;
+      }
       throw error;
     }
 
     return data?.data || null;
   } catch (error: any) {
+    if (error?.code === 'PGRST205') {
+      console.error('[loadPriceFromSupabase] Table "price" does not exist. Please run the SQL schema from supabase-schema.sql in your Supabase SQL Editor.');
+      return null;
+    }
     console.error('Error loading price from Supabase:', error);
     return null;
   }
@@ -236,9 +279,17 @@ async function savePriceToSupabase(price: TokenPrice): Promise<void> {
       });
 
     if (error) {
+      if (error.code === 'PGRST205') {
+        console.error('[savePriceToSupabase] Table "price" does not exist. Please run the SQL schema from supabase-schema.sql in your Supabase SQL Editor.');
+        return; // Ne pas faire échouer, juste logger l'erreur
+      }
       throw error;
     }
-  } catch (error) {
+  } catch (error: any) {
+    if (error?.code === 'PGRST205') {
+      console.error('[savePriceToSupabase] Table "price" does not exist. Please run the SQL schema from supabase-schema.sql in your Supabase SQL Editor.');
+      return; // Ne pas faire échouer, juste logger l'erreur
+    }
     console.error('Error saving price to Supabase:', error);
   }
 }
@@ -258,11 +309,20 @@ async function loadHistoryFromSupabase(): Promise<HistoricalDataPoint[]> {
         // No rows returned
         return [];
       }
+      if (error.code === 'PGRST205') {
+        // Table not found
+        console.error('[loadHistoryFromSupabase] Table "history" does not exist. Please run the SQL schema from supabase-schema.sql in your Supabase SQL Editor.');
+        return [];
+      }
       throw error;
     }
 
     return data?.data || [];
   } catch (error: any) {
+    if (error?.code === 'PGRST205') {
+      console.error('[loadHistoryFromSupabase] Table "history" does not exist. Please run the SQL schema from supabase-schema.sql in your Supabase SQL Editor.');
+      return [];
+    }
     console.error('Error loading history from Supabase:', error);
     return [];
   }
@@ -283,9 +343,17 @@ async function saveHistoryToSupabase(history: HistoricalDataPoint[]): Promise<vo
       });
 
     if (error) {
+      if (error.code === 'PGRST205') {
+        console.error('[saveHistoryToSupabase] Table "history" does not exist. Please run the SQL schema from supabase-schema.sql in your Supabase SQL Editor.');
+        return; // Ne pas faire échouer, juste logger l'erreur
+      }
       throw error;
     }
-  } catch (error) {
+  } catch (error: any) {
+    if (error?.code === 'PGRST205') {
+      console.error('[saveHistoryToSupabase] Table "history" does not exist. Please run the SQL schema from supabase-schema.sql in your Supabase SQL Editor.');
+      return; // Ne pas faire échouer, juste logger l'erreur
+    }
     console.error('Error saving history to Supabase:', error);
   }
 }
