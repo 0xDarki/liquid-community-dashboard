@@ -178,6 +178,33 @@ export default function Dashboard() {
                     ? `Sync All (${Math.ceil(timeUntilNextSync / 1000)}s)`
                     : 'Sync All'}
               </button>
+              <button
+                onClick={async () => {
+                  if (!confirm('Import transactions from data/mints.json? This will merge with existing data.')) {
+                    return;
+                  }
+                  setSyncing(true);
+                  try {
+                    const res = await fetch('/api/mints/import', { method: 'POST' });
+                    const data = await res.json();
+                    if (res.ok && data.success) {
+                      alert(`Import successful: ${data.imported} new transactions imported. Total: ${data.total}`);
+                      fetchData(); // Rafraîchir les données
+                    } else {
+                      alert(`Import failed: ${data.error || 'Unknown error'}`);
+                    }
+                  } catch (error: any) {
+                    alert(`Import error: ${error.message}`);
+                  } finally {
+                    setSyncing(false);
+                  }
+                }}
+                disabled={syncing || loading}
+                className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors text-sm font-medium"
+                title="Import transactions from data/mints.json file"
+              >
+                {syncing ? 'Importing...' : 'Import from mints.json'}
+              </button>
             </div>
           </div>
           <div className="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
