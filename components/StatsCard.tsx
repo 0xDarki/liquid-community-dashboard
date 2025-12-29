@@ -77,8 +77,8 @@ export default function StatsCard({ title, value, subtitle, icon, color = 'blue'
           <div className="flex items-center gap-2 mb-2">
             <div className={`w-2 h-2 rounded-full ${colors.dot}`}></div>
             <p className={`text-xs font-semibold ${colors.title} uppercase tracking-wide`}>
-              {title}
-            </p>
+            {title}
+          </p>
           </div>
           <p className={`text-2xl font-bold ${colors.value} mb-1`}>
             {value}

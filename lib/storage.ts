@@ -82,8 +82,8 @@ async function loadMintsFromSupabase(): Promise<MintTransaction[]> {
       if (error.code === 'PGRST116') {
         // No rows returned
         console.log('[loadMintsFromSupabase] No data found, returning empty array');
-        return [];
-      }
+      return [];
+    }
       if (error.code === 'PGRST205') {
         // Table not found
         console.error('[loadMintsFromSupabase] Table "mints" does not exist. Please run the SQL schema from supabase-schema.sql in your Supabase SQL Editor.');
@@ -91,7 +91,7 @@ async function loadMintsFromSupabase(): Promise<MintTransaction[]> {
       }
       throw error;
     }
-
+    
     return data?.data || [];
   } catch (error: any) {
     if (error?.code === 'PGRST205') {
@@ -194,7 +194,7 @@ async function saveTransfersToSupabase(transfers: TransferTransaction[]): Promis
       }
       throw error;
     }
-
+    
     console.log(`[saveTransfersToSupabase] Successfully saved ${transfers.length} transactions`);
   } catch (error: any) {
     if (error?.code === 'PGRST205') {
@@ -1088,7 +1088,7 @@ export async function syncTransfers(limit: number = 1000, getAll: boolean = fals
       console.log(`[syncTransfers] Saving ${updated.length} total transactions...`);
       await saveStoredTransfers(updated);
       console.log(`[syncTransfers] Successfully saved ${updated.length} transactions`);
-    } else {
+  } else {
       console.log(`[syncTransfers] No new transactions to add`);
     }
     

@@ -155,10 +155,11 @@ export async function getTokenBalance(address: string, mintAddress: string): Pro
     // Alternative: chercher dans les transactions récentes pour trouver le solde
     // Pour la LP, on peut aussi chercher dans les postTokenBalances des transactions récentes
     try {
-      const signatures = await connection.getSignaturesForAddress(publicKey, { limit: 10 });
+      const signatures = await connection.getSignaturesForAddress(publicKey, { limit: 20 });
       console.log(`[getTokenBalance] Checking ${signatures.length} recent transactions for token balance...`);
       
-      // Chercher dans les transactions récentes (jusqu'à 10)
+      // Chercher dans les transactions récentes (jusqu'à 20)
+      let maxBalance = 0;
       for (const sigInfo of signatures) {
         try {
           const tx = await connection.getParsedTransaction(sigInfo.signature, {
@@ -174,9 +175,23 @@ export async function getTokenBalance(address: string, mintAddress: string): Pro
                 totalBalance += amount;
               }
             }
-            if (totalBalance > 0) {
-              console.log(`[getTokenBalance] Found balance ${totalBalance} in transaction ${sigInfo.signature.substring(0, 20)}...`);
-              return totalBalance;
+            // Garder le maximum trouvé (car les balances peuvent varier)
+            if (totalBalance > maxBalance) {
+              maxBalance = totalBalance;
+            }
+          }
+          
+          // Aussi chercher dans preTokenBalances pour avoir une vue complète
+          if (tx?.meta?.preTokenBalances) {
+            let totalBalance = 0;
+            for (const balance of tx.meta.preTokenBalances) {
+              if (balance.owner === address && balance.mint === mintAddress) {
+                const amount = balance.uiTokenAmount?.uiAmount || 0;
+                totalBalance += amount;
+              }
+            }
+            if (totalBalance > maxBalance) {
+              maxBalance = totalBalance;
             }
           }
         } catch (txErr) {
@@ -184,15 +199,33 @@ export async function getTokenBalance(address: string, mintAddress: string): Pro
           continue;
         }
       }
+      
+      if (maxBalance > 0) {
+        console.log(`[getTokenBalance] Found balance ${maxBalance} in recent transactions`);
+        return maxBalance;
+      }
     } catch (err) {
       console.log('[getTokenBalance] Transaction search failed:', err);
     }
     
     // Dernière tentative: chercher tous les comptes tokens sans filtre mint
     try {
-      // getParsedTokenAccountsByOwner nécessite un filtre, donc on ne peut pas utiliser cette méthode
-      // On retourne 0 si aucune méthode n'a fonctionné
-      console.log('[getTokenBalance] All previous methods failed, returning 0');
+      // Essayer de récupérer tous les comptes tokens de cette adresse
+      const allTokenAccounts = await connection.getParsedTokenAccountsByOwner(publicKey, {});
+      
+      if (allTokenAccounts.value.length > 0) {
+        console.log(`[getTokenBalance] Found ${allTokenAccounts.value.length} token accounts, searching for mint ${mintAddress}...`);
+        for (const account of allTokenAccounts.value) {
+          const accountMint = account.account.data.parsed.info.mint;
+          if (accountMint === mintAddress) {
+            const balance = account.account.data.parsed.info.tokenAmount.uiAmount;
+            if (balance && balance > 0) {
+              console.log(`[getTokenBalance] Found balance ${balance} in token account without mint filter`);
+              return balance;
+            }
+          }
+        }
+      }
     } catch (err) {
       console.log('[getTokenBalance] All accounts search failed:', err);
     }
@@ -1464,11 +1497,12 @@ export async function getTokenPrice(): Promise<{ price: number; priceInUsd: numb
       console.error('[getTokenPrice] Error getting token balance:', error);
     }
     
-    // Si tokenBalance est 0, essayer de le récupérer depuis les transactions récentes
+    // Si tokenBalance est 0, essayer de le récupérer depuis les transactions récentes avec une recherche plus agressive
     if (tokenBalance === 0) {
       console.log('[getTokenPrice] Token balance is 0, trying to find it in recent transactions...');
       try {
-        const signatures = await connection.getSignaturesForAddress(publicKey, { limit: 5 });
+        const signatures = await connection.getSignaturesForAddress(publicKey, { limit: 20 });
+        let maxBalance = 0;
         for (const sigInfo of signatures) {
           try {
             const tx = await connection.getParsedTransaction(sigInfo.signature, {
@@ -1481,18 +1515,63 @@ export async function getTokenPrice(): Promise<{ price: number; priceInUsd: numb
                   totalBalance += balance.uiTokenAmount?.uiAmount || 0;
                 }
               }
-              if (totalBalance > 0) {
-                tokenBalance = totalBalance;
-                console.log(`[getTokenPrice] Found token balance ${tokenBalance} in recent transaction`);
-                break;
+              if (totalBalance > maxBalance) {
+                maxBalance = totalBalance;
+              }
+            }
+            // Aussi chercher dans preTokenBalances
+            if (tx?.meta?.preTokenBalances) {
+              let totalBalance = 0;
+              for (const balance of tx.meta.preTokenBalances) {
+                if (balance.owner === CURRENT_LIQUIDITY_POOL_ADDRESS && balance.mint === TOKEN_MINT_ADDRESS) {
+                  totalBalance += balance.uiTokenAmount?.uiAmount || 0;
+                }
+              }
+              if (totalBalance > maxBalance) {
+                maxBalance = totalBalance;
               }
             }
           } catch (err) {
             continue;
           }
         }
+        if (maxBalance > 0) {
+          tokenBalance = maxBalance;
+          console.log(`[getTokenPrice] Found token balance ${tokenBalance} in recent transactions`);
+        }
       } catch (err) {
         console.error('[getTokenPrice] Error searching transactions for balance:', err);
+      }
+      
+      // Si toujours 0, essayer avec DexScreener API comme fallback
+      if (tokenBalance === 0) {
+        console.log('[getTokenPrice] Token balance still 0, trying DexScreener API...');
+        try {
+          const dexScreenerResponse = await fetch(`https://api.dexscreener.com/latest/dex/pairs/solana/${CURRENT_LIQUIDITY_POOL_ADDRESS}`);
+          if (dexScreenerResponse.ok) {
+            const dexData = await dexScreenerResponse.json();
+            if (dexData.pairs && dexData.pairs.length > 0) {
+              const pair = dexData.pairs[0];
+              // DexScreener retourne la liquidité en USD, on peut calculer le token balance depuis là
+              if (pair.liquidity?.usd && pair.priceUsd) {
+                // Liquidité USD = (solBalance * solPrice) + (tokenBalance * tokenPriceInUsd)
+                // On connaît déjà solBalance et on va avoir solPrice plus tard, mais on peut essayer de calculer
+                // tokenBalance = (liquidityUSD - solBalance * solPrice) / tokenPriceInUsd
+                // Mais on n'a pas encore solPrice ici, donc on va juste logger pour debug
+                console.log('[getTokenPrice] DexScreener data:', {
+                  liquidityUSD: pair.liquidity?.usd,
+                  priceUsd: pair.priceUsd,
+                  reserve0: pair.reserve0,
+                  reserve1: pair.reserve1,
+                });
+                // DexScreener peut avoir les réserves, mais il faut identifier lequel est SOL et lequel est le token
+                // Pour l'instant, on ne peut pas utiliser directement sans savoir l'ordre
+              }
+            }
+          }
+        } catch (err) {
+          console.error('[getTokenPrice] Error fetching from DexScreener:', err);
+        }
       }
     }
     

@@ -248,7 +248,7 @@ export default function Dashboard() {
       // Éviter de faire trop de requêtes en même temps
       if (now - lastFetchTime < FETCH_INTERVAL) {
         // Si moins de 30 secondes se sont écoulées, mettre à jour seulement le compte à rebours local
-        if (lastSyncTime) {
+      if (lastSyncTime) {
           const timeElapsed = now - lastSyncTime.getTime();
           const twoMinutes = 2 * 60 * 1000;
           const timeRemaining = Math.max(0, twoMinutes - timeElapsed);
@@ -279,10 +279,10 @@ export default function Dashboard() {
               // Calculer localement si timeRemaining n'est pas disponible
               const now = Date.now();
               const lastSync = syncState.lastSync;
-              const twoMinutes = 2 * 60 * 1000; // 2 minutes en millisecondes
-              const timeElapsed = now - lastSync;
-              const timeRemaining = Math.max(0, twoMinutes - timeElapsed);
-              setTimeUntilNextSync(timeRemaining);
+        const twoMinutes = 2 * 60 * 1000; // 2 minutes en millisecondes
+        const timeElapsed = now - lastSync;
+        const timeRemaining = Math.max(0, twoMinutes - timeElapsed);
+        setTimeUntilNextSync(timeRemaining);
             }
             
             // Mettre à jour le lastSyncTime local
@@ -295,8 +295,8 @@ export default function Dashboard() {
               // Timestamp en millisecondes (13 chiffres), utiliser tel quel
               setLastSyncTime(new Date(timestamp));
             }
-          } else {
-            setTimeUntilNextSync(0);
+      } else {
+        setTimeUntilNextSync(0);
             // Ne pas réinitialiser lastSyncTime si on a déjà une valeur valide
           }
         }
@@ -334,21 +334,21 @@ export default function Dashboard() {
         {/* Header */}
         <div className="mb-8">
           <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-xl p-6 border border-gray-200 dark:border-gray-700 mb-6">
-            <div className="flex flex-col md:flex-row md:items-center md:justify-between mb-4">
-              <div>
+          <div className="flex flex-col md:flex-row md:items-center md:justify-between mb-4">
+            <div>
                 <h1 className="text-4xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 dark:from-blue-400 dark:to-purple-400 bg-clip-text text-transparent mb-2">
-                  Liquid Community Dashboard
-                </h1>
-                <p className="text-sm text-gray-600 dark:text-gray-400">
+                Liquid Community Dashboard
+              </h1>
+              <p className="text-sm text-gray-600 dark:text-gray-400">
                   Liquidity additions tracking - each liquidity addition is followed by a burn. Tek built by @leyten. Dashboard built by @0xDarki.
-                </p>
-              </div>
-              <div className="mt-4 md:mt-0 flex items-center gap-3 flex-wrap">
-                <button
-                  onClick={fetchData}
-                  disabled={loading}
+              </p>
+            </div>
+            <div className="mt-4 md:mt-0 flex items-center gap-3 flex-wrap">
+              <button
+                onClick={fetchData}
+                disabled={loading}
                   className="px-5 py-2.5 bg-gradient-to-r from-blue-500 to-blue-600 text-white rounded-xl hover:from-blue-600 hover:to-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 text-sm font-semibold shadow-lg hover:shadow-xl transform hover:scale-105 active:scale-95"
-                >
+              >
                   {loading ? (
                     <span className="flex items-center gap-2">
                       <svg className="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
@@ -365,7 +365,7 @@ export default function Dashboard() {
                       Refresh
                     </span>
                   )}
-                </button>
+              </button>
               {/* Debug: Afficher l'état d'autorisation (à retirer en production) */}
               {process.env.NODE_ENV === 'development' && (
                 <span className="text-xs text-gray-500 dark:text-gray-400 px-2 py-1 bg-gray-100 dark:bg-gray-800 rounded">
@@ -374,14 +374,14 @@ export default function Dashboard() {
               )}
               {isAuthorizedDomain && (
                 <>
-                  <button
-                    onClick={async () => {
-                      setSyncing(true);
-                      try {
+              <button
+                onClick={async () => {
+                  setSyncing(true);
+                  try {
                         // Synchroniser uniquement les mints (les transfers/burns sont importés via CSV uniquement)
-                        const res = await fetch('/api/mints/sync?limit=60');
-                        const data = await res.json();
-                        if (res.ok && data.success) {
+                    const res = await fetch('/api/mints/sync?limit=60');
+                    const data = await res.json();
+                    if (res.ok && data.success) {
                           // Le sync state est maintenant mis à jour côté serveur
                           // Attendre un peu pour que le sync state soit bien sauvegardé
                           await new Promise(resolve => setTimeout(resolve, 500));
@@ -396,17 +396,17 @@ export default function Dashboard() {
                               ? `Please wait ${data.timeRemaining} seconds before updating again. ${data.error || ''}`
                               : data.error || 'Please wait before updating again';
                             alert(message);
-                          } else {
+                    } else {
                             alert(`Error: ${data.error || 'Update failed'}`);
                           }
-                        }
-                      } catch (error) {
+                    }
+                  } catch (error) {
                         console.error('Error updating:', error);
                         alert('Error during update');
-                      } finally {
-                        setSyncing(false);
-                      }
-                    }}
+                  } finally {
+                    setSyncing(false);
+                  }
+                }}
                     disabled={syncing || loading || isSyncInProgress || timeUntilNextSync > 0 || recovering}
                     className="px-5 py-2.5 bg-gradient-to-r from-green-500 to-emerald-600 text-white rounded-xl hover:from-green-600 hover:to-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 text-sm font-semibold shadow-lg hover:shadow-xl transform hover:scale-105 active:scale-95"
                     title={
@@ -488,7 +488,7 @@ export default function Dashboard() {
                         Recover All
                       </span>
                     )}
-                  </button>
+              </button>
                   <label
                     className="px-5 py-2.5 bg-gradient-to-r from-purple-500 to-indigo-600 text-white rounded-xl hover:from-purple-600 hover:to-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 text-sm font-semibold shadow-lg hover:shadow-xl transform hover:scale-105 active:scale-95 cursor-pointer"
                     title="Import burns/transfers from CSV file (only method available - RPC sync disabled)"
@@ -690,15 +690,15 @@ export default function Dashboard() {
                 const priceToken = stats.tokenPriceToken ?? stats.tokenBalance;
                 
                 // Toujours afficher la carte Token Price, même si les prix ne sont pas encore disponibles
-                return (
-                  <StatsCard
-                    title="Token Price"
-                    value={priceInUsd != null && priceInUsd > 0 
-                      ? `$${priceInUsd.toFixed(8)} $LIQUID`
+                  return (
+                    <StatsCard
+                      title="Token Price"
+                      value={priceInUsd != null && priceInUsd > 0 
+                        ? `$${priceInUsd.toFixed(8)} $LIQUID`
                       : priceInSol != null && priceInSol > 0
                         ? `${priceInSol.toFixed(8)} SOL`
                         : 'Loading...'}
-                    subtitle={priceInUsd != null && priceInUsd > 0
+                      subtitle={priceInUsd != null && priceInUsd > 0
                       ? `${priceInSol?.toFixed(8) || '0'} SOL ($${solPrice?.toFixed(2) || 'N/A'} SOL)`
                       : priceInSol != null && priceInSol > 0
                         ? `${priceSol > 0 ? priceSol.toFixed(4) : '0'} SOL / ${priceToken > 0 ? priceToken.toLocaleString('en-US', { maximumFractionDigits: 2 }) : '0'} tokens`
@@ -707,8 +707,8 @@ export default function Dashboard() {
                   />
                 );
               })()}
-              <StatsCard
-                title="Total Liquidity"
+                <StatsCard
+                  title="Total Liquidity"
                 value={stats.totalLiquidity != null && stats.totalLiquidity > 0 && stats.solPrice != null && stats.tokenPriceInUsd != null
                   ? (() => {
                       const solValue = stats.totalSolAdded * stats.solPrice;
@@ -733,8 +733,8 @@ export default function Dashboard() {
                     })()
                   : stats.totalLiquidity != null && stats.totalLiquidity > 0
                     ? `$${stats.totalLiquidity.toLocaleString('en-US', {
-                        minimumFractionDigits: 2,
-                        maximumFractionDigits: 2,
+                    minimumFractionDigits: 2,
+                    maximumFractionDigits: 2,
                       })}`
                     : 'Loading...'}
                 subtitle={stats.totalLiquidity != null && stats.totalLiquidity > 0 && stats.solPrice != null && stats.tokenPriceInUsd != null
@@ -766,8 +766,8 @@ export default function Dashboard() {
             <div className="flex items-center justify-between">
               <div>
                 <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-1">
-                  Liquidity Addition Transactions
-                </h2>
+              Liquidity Addition Transactions
+            </h2>
                 <p className="text-sm text-gray-600 dark:text-gray-400">
                   All mint transactions from the liquidity pool
                 </p>
@@ -775,7 +775,7 @@ export default function Dashboard() {
               <div className="px-4 py-2 bg-indigo-50 dark:bg-indigo-900/20 rounded-lg border border-indigo-200 dark:border-indigo-800/30">
                 <span className="text-sm font-semibold text-indigo-700 dark:text-indigo-300">
                   {mintTransactions.length} transactions
-                </span>
+            </span>
               </div>
             </div>
           </div>
@@ -784,29 +784,29 @@ export default function Dashboard() {
           {mintTransactions.length > transactionsPerPage && (
             <div className="bg-white dark:bg-gray-800 rounded-xl shadow-lg p-4 border border-gray-200 dark:border-gray-700 mb-4">
               <div className="flex items-center justify-between">
-                <div className="text-sm text-gray-600 dark:text-gray-400">
+              <div className="text-sm text-gray-600 dark:text-gray-400">
                   Showing <span className="font-semibold text-gray-900 dark:text-white">{((currentPage - 1) * transactionsPerPage) + 1}</span> to <span className="font-semibold text-gray-900 dark:text-white">{Math.min(currentPage * transactionsPerPage, mintTransactions.length)}</span> of <span className="font-semibold text-gray-900 dark:text-white">{mintTransactions.length}</span> transactions
-                </div>
-                <div className="flex items-center gap-2">
-                  <button
-                    onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
-                    disabled={currentPage === 1}
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+                  disabled={currentPage === 1}
                     className="px-4 py-2 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 text-sm font-medium shadow-sm hover:shadow-md"
-                  >
-                    Previous
-                  </button>
+                >
+                  Previous
+                </button>
                   <div className="px-4 py-2 bg-indigo-50 dark:bg-indigo-900/20 rounded-lg border border-indigo-200 dark:border-indigo-800/30">
                     <span className="text-sm font-semibold text-indigo-700 dark:text-indigo-300">
-                      Page {currentPage} of {Math.ceil(mintTransactions.length / transactionsPerPage)}
-                    </span>
+                  Page {currentPage} of {Math.ceil(mintTransactions.length / transactionsPerPage)}
+                </span>
                   </div>
-                  <button
-                    onClick={() => setCurrentPage(prev => Math.min(Math.ceil(mintTransactions.length / transactionsPerPage), prev + 1))}
-                    disabled={currentPage >= Math.ceil(mintTransactions.length / transactionsPerPage)}
+                <button
+                  onClick={() => setCurrentPage(prev => Math.min(Math.ceil(mintTransactions.length / transactionsPerPage), prev + 1))}
+                  disabled={currentPage >= Math.ceil(mintTransactions.length / transactionsPerPage)}
                     className="px-4 py-2 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 text-sm font-medium shadow-sm hover:shadow-md"
-                  >
-                    Next
-                  </button>
+                >
+                  Next
+                </button>
                 </div>
               </div>
             </div>
