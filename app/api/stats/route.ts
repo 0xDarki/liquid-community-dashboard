@@ -68,16 +68,19 @@ export async function GET() {
     const totalTokensAdded = storedMints.reduce((sum, tx) => sum + tx.tokenAmount, 0);
     
     // Récupérer les balances actuelles et la supply du token
-    const { getSolBalance, getTokenBalance, getTokenSupply, LP_POOL_ADDRESS, TOKEN_MINT_ADDRESS } = await import('@/lib/solana');
-    const [solBalance, tokenBalance, tokenSupply] = await Promise.all([
+    const { getSolBalance, getTokenBalance, getTokenSupply, LP_POOL_ADDRESS, TOKEN_MINT_ADDRESS, BUYBACK_ADDRESS } = await import('@/lib/solana');
+    const [solBalance, tokenBalance, tokenSupply, buybackTokenBalance] = await Promise.all([
       getSolBalance(LP_POOL_ADDRESS),
       getTokenBalance(LP_POOL_ADDRESS, TOKEN_MINT_ADDRESS),
       getTokenSupply(TOKEN_MINT_ADDRESS),
+      getTokenBalance(BUYBACK_ADDRESS, TOKEN_MINT_ADDRESS),
     ]);
     
-    // Calculer le burn : supply initiale (1,000,000,000) - supply actuelle
+    // Calculer le burn : supply initiale (1,000,000,000) - supply actuelle - tokens dans le wallet buyback
     const INITIAL_SUPPLY = 1000000000; // 1 milliard
-    const tokenBurned = tokenSupply > 0 ? INITIAL_SUPPLY - tokenSupply : null;
+    const tokenBurned = tokenSupply > 0 
+      ? INITIAL_SUPPLY - tokenSupply - (buybackTokenBalance || 0)
+      : null;
     
     // Récupérer les transfers (limité pour éviter trop de requêtes)
     const { getTransferTransactions } = await import('@/lib/solana');
