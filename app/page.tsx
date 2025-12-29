@@ -665,7 +665,12 @@ export default function Dashboard() {
                 value={stats.tokenSupply != null && stats.tokenPriceInUsd != null && stats.solBalance != null && stats.tokenBalance != null && stats.solPrice != null
                   ? (() => {
                       const marketCap = stats.tokenSupply * stats.tokenPriceInUsd;
-                      const totalLiquidity = (stats.solBalance * stats.solPrice) + (stats.tokenBalance * stats.tokenPriceInUsd);
+                      const solLiquidity = stats.solBalance * stats.solPrice;
+                      const tokenLiquidity = stats.tokenBalance * stats.tokenPriceInUsd;
+                      // Si tokenBalance est 0 ou très faible, multiplier la liquidité SOL par 2
+                      const totalLiquidity = (stats.tokenBalance <= 0 || tokenLiquidity < solLiquidity * 0.1) 
+                        ? solLiquidity * 2 
+                        : solLiquidity + tokenLiquidity;
                       const ratio = totalLiquidity > 0 ? marketCap / totalLiquidity : null;
                       return ratio != null ? ratio.toFixed(2) : 'N/A';
                     })()
@@ -673,7 +678,12 @@ export default function Dashboard() {
                 subtitle={stats.tokenSupply != null && stats.tokenPriceInUsd != null && stats.solBalance != null && stats.tokenBalance != null && stats.solPrice != null
                   ? (() => {
                       const marketCap = stats.tokenSupply * stats.tokenPriceInUsd;
-                      const totalLiquidity = (stats.solBalance * stats.solPrice) + (stats.tokenBalance * stats.tokenPriceInUsd);
+                      const solLiquidity = stats.solBalance * stats.solPrice;
+                      const tokenLiquidity = stats.tokenBalance * stats.tokenPriceInUsd;
+                      // Si tokenBalance est 0 ou très faible, multiplier la liquidité SOL par 2
+                      const totalLiquidity = (stats.tokenBalance <= 0 || tokenLiquidity < solLiquidity * 0.1) 
+                        ? solLiquidity * 2 
+                        : solLiquidity + tokenLiquidity;
                       return `MC: $${marketCap.toLocaleString('en-US', { maximumFractionDigits: 0 })} / Liq: $${totalLiquidity.toLocaleString('en-US', { maximumFractionDigits: 0 })}`;
                     })()
                   : 'Calculating...'}
