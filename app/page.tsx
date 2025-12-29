@@ -378,12 +378,8 @@ export default function Dashboard() {
                     onClick={async () => {
                       setSyncing(true);
                       try {
-                        // Synchroniser les mints et les transfers en parallèle
-                        const [mintsRes, transfersRes] = await Promise.all([
-                          fetch('/api/mints/sync?limit=60'),
-                          fetch('/api/transfers/sync?limit=1000').catch(() => null), // Ignorer les erreurs pour les transfers
-                        ]);
-                        const res = mintsRes;
+                        // Synchroniser uniquement les mints (les transfers/burns sont importés via CSV uniquement)
+                        const res = await fetch('/api/mints/sync?limit=60');
                         const data = await res.json();
                         if (res.ok && data.success) {
                           // Le sync state est maintenant mis à jour côté serveur
@@ -442,22 +438,16 @@ export default function Dashboard() {
                   </button>
                   <button
                     onClick={async () => {
-                      if (!confirm('This will recover ALL transactions from the blockchain and may take several minutes. Continue?')) {
+                      if (!confirm('This will recover ALL mint transactions from the blockchain and may take several minutes. Note: Burns/transfers must be imported via CSV. Continue?')) {
                         return;
                       }
                       setRecovering(true);
                       try {
-                        // Récupérer les mints et synchroniser les transfers en parallèle
-                        const [mintsRes, transfersRes] = await Promise.all([
-                          fetch('/api/mints/recover', { method: 'POST' }),
-                          fetch('/api/transfers/sync?getAll=true').catch(() => null), // Ignorer les erreurs pour les transfers
-                        ]);
-                        const res = mintsRes;
+                        // Récupérer uniquement les mints (les transfers/burns sont importés via CSV uniquement)
+                        const res = await fetch('/api/mints/recover', { method: 'POST' });
                         const data = await res.json();
                         if (res.ok && data.success) {
-                          const transfersData = transfersRes ? await transfersRes.json().catch(() => null) : null;
-                          const transfersMsg = transfersData?.success ? ` Transfers: ${transfersData.added} new, ${transfersData.total} total.` : '';
-                          alert(`Recovery successful: ${data.added} transactions recovered. Total: ${data.total}. ${data.message || ''}${transfersMsg}`);
+                          alert(`Recovery successful: ${data.added} transactions recovered. Total: ${data.total}. ${data.message || ''}\n\nNote: Burns/transfers must be imported via CSV.`);
                           // Attendre un peu pour que le sync state soit bien sauvegardé
                           await new Promise(resolve => setTimeout(resolve, 500));
                           // Rafraîchir toutes les données pour qu'elles soient à jour
@@ -501,7 +491,7 @@ export default function Dashboard() {
                   </button>
                   <label
                     className="px-5 py-2.5 bg-gradient-to-r from-purple-500 to-indigo-600 text-white rounded-xl hover:from-purple-600 hover:to-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 text-sm font-semibold shadow-lg hover:shadow-xl transform hover:scale-105 active:scale-95 cursor-pointer"
-                    title="Import transfers from CSV file"
+                    title="Import burns/transfers from CSV file (only method available - RPC sync disabled)"
                   >
                     <input
                       type="file"

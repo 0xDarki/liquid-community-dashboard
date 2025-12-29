@@ -67,12 +67,11 @@ export async function GET() {
     const totalSolAdded = storedMints.reduce((sum, tx) => sum + tx.solAmount, 0);
     const totalTokensAdded = storedMints.reduce((sum, tx) => sum + tx.tokenAmount, 0);
     
-    // Récupérer les balances actuelles et la supply du token
-    const { getSolBalance, getTokenBalance, getTokenSupply, LP_POOL_ADDRESS, TOKEN_MINT_ADDRESS } = await import('@/lib/solana');
-    const [solBalance, tokenBalance, tokenSupply] = await Promise.all([
+    // Récupérer les balances actuelles (la supply n'est plus nécessaire pour le calcul du burn)
+    const { getSolBalance, getTokenBalance, LP_POOL_ADDRESS, TOKEN_MINT_ADDRESS } = await import('@/lib/solana');
+    const [solBalance, tokenBalance] = await Promise.all([
       getSolBalance(LP_POOL_ADDRESS),
       getTokenBalance(LP_POOL_ADDRESS, TOKEN_MINT_ADDRESS),
-      getTokenSupply(TOKEN_MINT_ADDRESS),
     ]);
     
     // Récupérer les transactions de transfert depuis le stockage (pas d'appel RPC)
@@ -87,18 +86,15 @@ export async function GET() {
       // Continuer même si on ne peut pas charger les transfers
     }
     
-    // Calculer le total des tokens transférés vers le buyback
+    // Calculer le total des tokens brûlés directement depuis les transactions de burn importées
+    // Les transfers sont les transactions de burn vers l'incinerator (1nc1nerator11111111111111111111111111111111)
     const totalTokensTransferred = transferTxs.reduce((sum, tx) => sum + tx.tokenAmount, 0);
     
-    // Calculer le burn : supply initiale (1,000,000,000) - supply actuelle - tokens transférés vers le buyback
-    const INITIAL_SUPPLY = 1000000000; // 1 milliard
-    // Utiliser la somme des transactions de transfert au lieu de getTokenBalance
-    // car getTokenBalance peut échouer ou ne pas être fiable
-    const tokenBurned = tokenSupply >= 0 
-      ? INITIAL_SUPPLY - tokenSupply - totalTokensTransferred
-      : null;
+    // Utiliser directement la somme des transactions de burn importées
+    // C'est plus fiable que de calculer depuis la supply car on a la liste complète des burns
+    const tokenBurned = totalTokensTransferred > 0 ? totalTokensTransferred : null;
     
-    console.log(`[Stats API] Burn calculation: ${INITIAL_SUPPLY} (initial) - ${tokenSupply} (current supply) - ${totalTokensTransferred} (tokens in buyback) = ${tokenBurned}`);
+    console.log(`[Stats API] Burn calculation: Using sum of imported burn transactions = ${totalTokensTransferred} tokens burned (from ${transferTxs.length} transactions)`);
     
     // Calculer la liquidité totale : (Total SOL Added × prix SOL) + (Total Tokens Added × prix token)
     let totalLiquidity: number | null = null;
@@ -119,7 +115,7 @@ export async function GET() {
       totalSolAdded,
       totalTokensAdded,
       totalTokensTransferred,
-      tokenSupply: tokenSupply >= 0 ? tokenSupply : null,
+      tokenSupply: null, // Plus utilisé pour le calcul du burn, on utilise directement les transactions importées
       tokenBurned,
       tokenPrice: tokenPrice?.price ?? null,
       tokenPriceInUsd: tokenPrice?.priceInUsd ?? null,
