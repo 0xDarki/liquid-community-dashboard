@@ -87,21 +87,43 @@ export async function getTokenBalance(address: string, mintAddress: string): Pro
     const publicKey = new PublicKey(address);
     const mintPublicKey = new PublicKey(mintAddress);
     
-    // Essayer d'abord avec getParsedTokenAccountsByOwner
-    try {
-      const tokenAccounts = await connection.getParsedTokenAccountsByOwner(publicKey, {
-        mint: mintPublicKey,
-      });
+    // Essayer d'abord avec getParsedTokenAccountsByOwner (avec retry pour erreurs temporaires)
+    let retries = 0;
+    const maxRetries = 3;
+    while (retries < maxRetries) {
+      try {
+        const tokenAccounts = await connection.getParsedTokenAccountsByOwner(publicKey, {
+          mint: mintPublicKey,
+        });
 
-      if (tokenAccounts.value.length > 0) {
-        const balance = tokenAccounts.value[0].account.data.parsed.info.tokenAmount.uiAmount;
-        if (balance && balance > 0) {
-          console.log(`[getTokenBalance] Found balance via getParsedTokenAccountsByOwner: ${balance}`);
-          return balance;
+        if (tokenAccounts.value.length > 0) {
+          const balance = tokenAccounts.value[0].account.data.parsed.info.tokenAmount.uiAmount;
+          if (balance && balance > 0) {
+            console.log(`[getTokenBalance] Found balance via getParsedTokenAccountsByOwner: ${balance}`);
+            return balance;
+          }
         }
+        // Si on arrive ici, pas de balance trouvée, sortir de la boucle
+        break;
+      } catch (err: any) {
+        const errorMessage = err?.message || '';
+        const isTemporaryError = 
+          errorMessage.includes('500') || 
+          errorMessage.includes('Internal Server Error') ||
+          errorMessage.includes('Temporary internal error') ||
+          errorMessage.includes('503') || 
+          errorMessage.includes('Service Unavailable');
+        
+        if (isTemporaryError && retries < maxRetries - 1) {
+          retries++;
+          console.log(`[getTokenBalance] Temporary error (attempt ${retries}/${maxRetries}), retrying in 3 seconds...`);
+          await new Promise(resolve => setTimeout(resolve, 3000));
+          continue;
+        }
+        
+        console.log('[getTokenBalance] getParsedTokenAccountsByOwner failed:', err);
+        break;
       }
-    } catch (err) {
-      console.log('[getTokenBalance] getParsedTokenAccountsByOwner failed:', err);
     }
     
     // Alternative: chercher dans les transactions récentes pour trouver le solde
@@ -726,29 +748,59 @@ export async function getMintTransactions(limit: number = 50, existingSignatures
             processedCount++;
             consecutiveErrors = 0;
           } catch (error: any) {
-            consecutiveErrors++;
+            const errorMessage = error?.message || '';
+            const isTemporaryError = 
+              errorMessage.includes('500') || 
+              errorMessage.includes('Internal Server Error') ||
+              errorMessage.includes('Temporary internal error') ||
+              errorMessage.includes('503') || 
+              errorMessage.includes('Service Unavailable');
+            
+            // Ne pas compter les erreurs temporaires comme des erreurs consécutives
+            if (!isTemporaryError) {
+              consecutiveErrors++;
+            }
+            
             // Gérer spécifiquement les erreurs 401 (Invalid API key)
-            if (error?.message?.includes('401') || error?.message?.includes('Invalid API key') || error?.message?.includes('Unauthorized')) {
+            if (errorMessage.includes('401') || errorMessage.includes('Invalid API key') || errorMessage.includes('Unauthorized')) {
               console.error('Error fetching transactions: Invalid RPC API key. Please check your NEXT_PUBLIC_SOLANA_RPC_URL or SOLANA_RPC_URL environment variable.');
               throw error; // Arrêter immédiatement si la clé API est invalide
             }
-            if (error?.message?.includes('429') || error?.message?.includes('Too Many Requests')) {
+            
+            // Gérer les erreurs 500 (Internal Server Error) - erreurs temporaires
+            if (errorMessage.includes('500') || errorMessage.includes('Internal Server Error') || errorMessage.includes('Temporary internal error')) {
+              console.log(`[getMintTransactions] Temporary RPC error (500), waiting 5 seconds before retry...`);
+              await delay(5000); // Délai de 5 secondes pour les erreurs 500
+              // Ne pas incrémenter consecutiveErrors pour les erreurs temporaires
+              continue;
+            }
+            
+            if (errorMessage.includes('429') || errorMessage.includes('Too Many Requests')) {
               // Pour les erreurs 429, attendre plus longtemps
               console.log(`[getMintTransactions] Rate limited (429), waiting 10 seconds before retry...`);
               await delay(10000); // Délai de 10 secondes pour les erreurs 429
               // Réduire la vitesse après une erreur 429
               await delay(MIN_REQUEST_DELAY * 3); // Triple délai après 429
+              // Ne pas compter 429 comme erreur consécutive (c'est temporaire)
               continue;
             }
-            if (error?.message?.includes('503') || error?.message?.includes('Service Unavailable')) {
-              if (consecutiveErrors >= maxConsecutiveErrors) {
-                console.warn('Too many 503 errors, stopping LP transaction fetching');
-                hasMore = false;
-                break;
-              }
+            
+            if (errorMessage.includes('503') || errorMessage.includes('Service Unavailable')) {
+              console.log(`[getMintTransactions] Service unavailable (503), waiting 5 seconds before retry...`);
               await delay(5000); // Délai de 5 secondes pour les erreurs 503
+              // Ne pas compter 503 comme erreur consécutive (c'est temporaire)
               continue;
             }
+            
+            // Pour les autres erreurs, vérifier si on doit arrêter
+            if (consecutiveErrors >= maxConsecutiveErrors) {
+              console.warn(`[getMintTransactions] Too many consecutive errors (${consecutiveErrors}), stopping transaction fetching`);
+              hasMore = false;
+              break;
+            }
+            
+            // Pour les erreurs non-temporaires, attendre un peu avant de réessayer
+            await delay(2000);
           }
           
           // Si on a atteint la limite (et qu'on ne veut pas tout récupérer), arrêter
@@ -891,13 +943,33 @@ export async function getMintTransactions(limit: number = 50, existingSignatures
               processedCount++;
               consecutiveErrors = 0;
             } catch (error: any) {
-              consecutiveErrors++;
+              const errorMessage = error?.message || '';
+              const isTemporaryError = 
+                errorMessage.includes('500') || 
+                errorMessage.includes('Internal Server Error') ||
+                errorMessage.includes('Temporary internal error') ||
+                errorMessage.includes('503') || 
+                errorMessage.includes('Service Unavailable');
+              
+              // Ne pas compter les erreurs temporaires comme des erreurs consécutives
+              if (!isTemporaryError) {
+                consecutiveErrors++;
+              }
+              
               // Gérer spécifiquement les erreurs 401 (Invalid API key)
-              if (error?.message?.includes('401') || error?.message?.includes('Invalid API key') || error?.message?.includes('Unauthorized')) {
+              if (errorMessage.includes('401') || errorMessage.includes('Invalid API key') || errorMessage.includes('Unauthorized')) {
                 console.error('Error fetching token mint transactions: Invalid RPC API key. Please check your NEXT_PUBLIC_SOLANA_RPC_URL or SOLANA_RPC_URL environment variable.');
                 throw error; // Arrêter immédiatement si la clé API est invalide
               }
-              if (error?.message?.includes('429') || error?.message?.includes('Too Many Requests')) {
+              
+              // Gérer les erreurs 500 (Internal Server Error) - erreurs temporaires
+              if (errorMessage.includes('500') || errorMessage.includes('Internal Server Error') || errorMessage.includes('Temporary internal error')) {
+                console.log(`[getMintTransactions] Token mint: Temporary RPC error (500), waiting 5 seconds before retry...`);
+                await delay(5000);
+                continue;
+              }
+              
+              if (errorMessage.includes('429') || errorMessage.includes('Too Many Requests')) {
                 // Pour les erreurs 429, attendre plus longtemps et réduire la vitesse
                 console.log(`[getMintTransactions] Token mint: Rate limited (429), waiting 10 seconds before retry...`);
                 await delay(10000); // Délai de 10 secondes pour les erreurs 429
@@ -905,15 +977,22 @@ export async function getMintTransactions(limit: number = 50, existingSignatures
                 await delay(MIN_REQUEST_DELAY * 3); // Triple délai après 429
                 continue;
               }
-              if (error?.message?.includes('503') || error?.message?.includes('Service Unavailable')) {
-                if (consecutiveErrors >= maxConsecutiveErrors) {
-                  console.warn('Too many 503 errors, stopping token mint transaction fetching');
-                  hasMore = false;
-                  break;
-                }
+              
+              if (errorMessage.includes('503') || errorMessage.includes('Service Unavailable')) {
+                console.log(`[getMintTransactions] Token mint: Service unavailable (503), waiting 5 seconds before retry...`);
                 await delay(5000); // Délai de 5 secondes pour les erreurs 503
                 continue;
               }
+              
+              // Pour les autres erreurs, vérifier si on doit arrêter
+              if (consecutiveErrors >= maxConsecutiveErrors) {
+                console.warn(`[getMintTransactions] Token mint: Too many consecutive errors (${consecutiveErrors}), stopping`);
+                hasMore = false;
+                break;
+              }
+              
+              // Pour les erreurs non-temporaires, attendre un peu avant de réessayer
+              await delay(2000);
             }
             
             // Si on a atteint la limite (et qu'on ne veut pas tout récupérer), arrêter
@@ -1045,24 +1124,50 @@ export async function getTransferTransactions(limit: number = 50): Promise<Trans
           processedCount++;
           consecutiveErrors = 0; // Réinitialiser le compteur en cas de succès
         } catch (error: any) {
-          consecutiveErrors++;
+          const errorMessage = error?.message || '';
+          const isTemporaryError = 
+            errorMessage.includes('500') || 
+            errorMessage.includes('Internal Server Error') ||
+            errorMessage.includes('Temporary internal error') ||
+            errorMessage.includes('503') || 
+            errorMessage.includes('Service Unavailable');
+          
+          // Ne pas compter les erreurs temporaires comme des erreurs consécutives
+          if (!isTemporaryError) {
+            consecutiveErrors++;
+          }
+          
+          // Gérer les erreurs 500 (Internal Server Error) - erreurs temporaires
+          if (errorMessage.includes('500') || errorMessage.includes('Internal Server Error') || errorMessage.includes('Temporary internal error')) {
+            console.log(`[getTransferTransactions] Temporary RPC error (500), waiting 5 seconds before retry...`);
+            await delay(5000);
+            continue;
+          }
+          
           // Si erreur 429, attendre plus longtemps et réduire la vitesse
-          if (error?.message?.includes('429') || error?.message?.includes('Too Many Requests')) {
+          if (errorMessage.includes('429') || errorMessage.includes('Too Many Requests')) {
             console.log(`[getTransferTransactions] Rate limited (429), waiting 10 seconds before retry...`);
             await delay(10000); // Délai de 10 secondes pour les erreurs 429
             // Réduire la vitesse après une erreur 429
             await delay(MIN_REQUEST_DELAY * 3); // Triple délai après 429
             continue;
           }
+          
           // Si erreur 503, attendre plus longtemps
-          if (error?.message?.includes('503') || error?.message?.includes('Service Unavailable')) {
-            if (consecutiveErrors >= maxConsecutiveErrors) {
-              console.warn('Too many 503 errors for transfers, stopping and returning what we have');
-              break; // Break au lieu de throw pour retourner ce qu'on a
-            }
+          if (errorMessage.includes('503') || errorMessage.includes('Service Unavailable')) {
+            console.log(`[getTransferTransactions] Service unavailable (503), waiting 5 seconds before retry...`);
             await delay(5000); // Délai de 5 secondes pour les erreurs 503
             continue;
           }
+          
+          // Pour les autres erreurs, vérifier si on doit arrêter
+          if (consecutiveErrors >= maxConsecutiveErrors) {
+            console.warn(`[getTransferTransactions] Too many consecutive errors (${consecutiveErrors}), stopping and returning what we have`);
+            break; // Break au lieu de throw pour retourner ce qu'on a
+          }
+          
+          // Pour les erreurs non-temporaires, attendre un peu avant de réessayer
+          await delay(2000);
         }
         
         if (transactions.length >= limit) break;

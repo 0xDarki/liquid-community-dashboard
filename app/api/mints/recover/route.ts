@@ -82,10 +82,41 @@ export async function POST(request: Request) {
         try {
           await delay(MIN_REQUEST_DELAY);
           
-          const signatures = await connection.getSignaturesForAddress(publicKey, {
-            limit: signaturesPerPage,
-            before: before,
-          });
+          // Retry logic pour gérer les erreurs de parsing JSON
+          let signatures: any[] = [];
+          let retries = 0;
+          const maxRetries = 3;
+          
+          while (retries < maxRetries) {
+            try {
+              signatures = await connection.getSignaturesForAddress(publicKey, {
+                limit: signaturesPerPage,
+                before: before,
+              });
+              break; // Succès, sortir de la boucle
+            } catch (retryError: any) {
+              const retryErrorMessage = retryError?.message || '';
+              const isJsonError = retryErrorMessage.includes('JSON') || 
+                                  retryErrorMessage.includes('Unexpected token') ||
+                                  retryErrorMessage.includes('SyntaxError');
+              const isTemporaryError = retryErrorMessage.includes('500') || 
+                                      retryErrorMessage.includes('Internal Server Error') ||
+                                      retryErrorMessage.includes('Temporary internal error') ||
+                                      retryErrorMessage.includes('503') ||
+                                      retryErrorMessage.includes('Service Unavailable');
+              
+              if ((isJsonError || isTemporaryError) && retries < maxRetries - 1) {
+                retries++;
+                const waitTime = 5000 * retries; // Augmenter le délai à chaque retry
+                console.warn(`[Recover] Error fetching signatures page ${pageCount + 1} (attempt ${retries}/${maxRetries}): ${retryErrorMessage}. Retrying in ${waitTime}ms...`);
+                await delay(waitTime);
+                continue;
+              }
+              
+              // Si ce n'est pas une erreur temporaire ou qu'on a épuisé les retries, throw
+              throw retryError;
+            }
+          }
           
           if (signatures.length === 0) {
             console.log(`[Recover] No more signatures found, stopping`);
@@ -106,9 +137,40 @@ export async function POST(request: Request) {
             try {
               await delay(MIN_REQUEST_DELAY);
               
-              const tx = await connection.getParsedTransaction(sigInfo.signature, {
-                maxSupportedTransactionVersion: 0,
-              });
+              // Retry logic pour gérer les erreurs de parsing JSON
+              let tx: any = null;
+              let txRetries = 0;
+              const maxTxRetries = 2;
+              
+              while (txRetries < maxTxRetries) {
+                try {
+                  tx = await connection.getParsedTransaction(sigInfo.signature, {
+                    maxSupportedTransactionVersion: 0,
+                  });
+                  break; // Succès, sortir de la boucle
+                } catch (txError: any) {
+                  const txErrorMessage = txError?.message || '';
+                  const isJsonError = txErrorMessage.includes('JSON') || 
+                                      txErrorMessage.includes('Unexpected token') ||
+                                      txErrorMessage.includes('SyntaxError');
+                  const isTemporaryError = txErrorMessage.includes('500') || 
+                                          txErrorMessage.includes('Internal Server Error') ||
+                                          txErrorMessage.includes('Temporary internal error') ||
+                                          txErrorMessage.includes('503') ||
+                                          txErrorMessage.includes('Service Unavailable');
+                  
+                  if ((isJsonError || isTemporaryError) && txRetries < maxTxRetries - 1) {
+                    txRetries++;
+                    const waitTime = 3000 * txRetries; // 3s, 6s
+                    console.warn(`[Recover] Error fetching transaction ${sigInfo.signature.substring(0, 20)}... (attempt ${txRetries}/${maxTxRetries}): ${txErrorMessage}. Retrying in ${waitTime}ms...`);
+                    await delay(waitTime);
+                    continue;
+                  }
+                  
+                  // Si ce n'est pas une erreur temporaire ou qu'on a épuisé les retries, throw
+                  throw txError;
+                }
+              }
               
               if (tx && !tx.meta?.err) {
                 const mintTx = parseMintTransaction(tx);
@@ -124,6 +186,9 @@ export async function POST(request: Request) {
               }
             } catch (error: any) {
               const errorMessage = error?.message || '';
+              const isJsonError = errorMessage.includes('JSON') || 
+                                  errorMessage.includes('Unexpected token') ||
+                                  errorMessage.includes('SyntaxError');
               
               // Vérifier si c'est une limite quotidienne atteinte
               if (errorMessage.includes('daily request limit') || errorMessage.includes('daily limit reached') || errorMessage.includes('upgrade your account')) {
@@ -153,10 +218,14 @@ export async function POST(request: Request) {
                 }, { status: 429 });
               }
               
-              // Ignorer les erreurs temporaires et continuer
-              if (errorMessage.includes('429') || errorMessage.includes('503')) {
-                console.warn(`[Recover] Rate limited while processing signature, waiting 5 seconds...`);
-                await delay(5000);
+              // Ignorer les erreurs JSON/temporaires et continuer avec la transaction suivante
+              if (isJsonError || errorMessage.includes('429') || errorMessage.includes('503') || errorMessage.includes('500')) {
+                if (isJsonError) {
+                  console.warn(`[Recover] JSON parsing error for signature ${sigInfo.signature.substring(0, 20)}..., skipping...`);
+                } else {
+                  console.warn(`[Recover] Temporary error while processing signature, skipping...`);
+                }
+                // Ne pas attendre pour chaque transaction individuelle, continuer
               }
               continue;
             }
@@ -182,6 +251,14 @@ export async function POST(request: Request) {
         } catch (error: any) {
           console.error(`[Recover] Error fetching page ${pageCount + 1}:`, error);
           const errorMessage = error?.message || '';
+          const isJsonError = errorMessage.includes('JSON') || 
+                              errorMessage.includes('Unexpected token') ||
+                              errorMessage.includes('SyntaxError');
+          const isTemporaryError = errorMessage.includes('500') || 
+                                  errorMessage.includes('Internal Server Error') ||
+                                  errorMessage.includes('Temporary internal error') ||
+                                  errorMessage.includes('503') ||
+                                  errorMessage.includes('Service Unavailable');
           
           // Vérifier si c'est une limite quotidienne atteinte (daily limit)
           if (errorMessage.includes('daily request limit') || errorMessage.includes('daily limit reached') || errorMessage.includes('upgrade your account')) {
@@ -211,15 +288,19 @@ export async function POST(request: Request) {
             }, { status: 429 });
           }
           
-          // Si erreur 429 ou 503 temporaire, attendre plus longtemps
-          if (errorMessage.includes('429') || errorMessage.includes('503') || errorMessage.includes('Rate limit')) {
-            console.warn(`[Recover] Rate limited, waiting 10 seconds before continuing...`);
-            await delay(10000);
-            pageCount++;
+          // Si erreur JSON ou temporaire (500, 503), retenter avec un délai
+          if (isJsonError || isTemporaryError || errorMessage.includes('429') || errorMessage.includes('Rate limit')) {
+            const waitTime = isJsonError ? 10000 : 10000; // 10 secondes pour les erreurs JSON ou temporaires
+            console.warn(`[Recover] ${isJsonError ? 'JSON parsing error' : 'Temporary error'} on page ${pageCount + 1}, waiting ${waitTime}ms before retrying...`);
+            await delay(waitTime);
+            
+            // Réessayer cette page
+            pageCount--; // Décrémenter pour réessayer la même page
             continue;
           }
           
           // Pour les autres erreurs, arrêter
+          console.error(`[Recover] Fatal error on page ${pageCount + 1}, stopping recovery: ${errorMessage}`);
           hasMore = false;
           break;
         }
