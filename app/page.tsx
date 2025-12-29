@@ -651,10 +651,8 @@ export default function Dashboard() {
                       })
                     : '0'
                   : 'Loading...'}
-                subtitle={stats.tokenBurned != null
-                  ? stats.tokenSupply != null
-                    ? `${stats.tokenSupply.toLocaleString('en-US', { maximumFractionDigits: 0 })} / 1,000,000,000 supply`
-                    : 'Calculating supply...'
+                subtitle={stats.tokenBurned != null && stats.tokenSupply != null
+                  ? `${(stats.tokenSupply - stats.tokenBurned).toLocaleString('en-US', { maximumFractionDigits: 0 })} / 1,000,000,000 supply`
                   : stats.tokenSupply != null
                     ? `${stats.tokenSupply.toLocaleString('en-US', { maximumFractionDigits: 0 })} / 1,000,000,000 supply`
                     : 'Calculating...'}
