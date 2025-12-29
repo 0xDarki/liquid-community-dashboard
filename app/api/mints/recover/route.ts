@@ -68,9 +68,11 @@ export async function POST(request: Request) {
       const allNewTransactions: any[] = [];
       let before: string | undefined = undefined;
       let pageCount = 0;
-      const maxPages = 50; // Augmenter le nombre de pages pour récupérer plus de transactions
-      const signaturesPerPage = 1000; // Maximum par requête API
+      const maxPages = 100; // Augmenter le nombre de pages pour récupérer plus de transactions
+      const signaturesPerPage = 500; // Réduire à 500 pour éviter les réponses JSON trop grandes/malformées
       let hasMore = true;
+      let consecutivePageErrors = 0;
+      const maxConsecutivePageErrors = 3; // Après 3 erreurs consécutives sur une page, la sauter
       
       // Fonction helper pour delay
       const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
@@ -85,20 +87,27 @@ export async function POST(request: Request) {
           // Retry logic pour gérer les erreurs de parsing JSON
           let signatures: any[] = [];
           let retries = 0;
-          const maxRetries = 3;
+          const maxRetries = 2; // Réduire à 2 retries pour éviter de perdre trop de temps
           
           while (retries < maxRetries) {
             try {
+              // Essayer avec une limite réduite si on a déjà eu des erreurs
+              const currentLimit = retries > 0 ? Math.min(signaturesPerPage, 250) : signaturesPerPage;
+              
               signatures = await connection.getSignaturesForAddress(publicKey, {
-                limit: signaturesPerPage,
+                limit: currentLimit,
                 before: before,
               });
+              
+              // Succès, réinitialiser le compteur d'erreurs de page
+              consecutivePageErrors = 0;
               break; // Succès, sortir de la boucle
             } catch (retryError: any) {
               const retryErrorMessage = retryError?.message || '';
               const isJsonError = retryErrorMessage.includes('JSON') || 
                                   retryErrorMessage.includes('Unexpected token') ||
-                                  retryErrorMessage.includes('SyntaxError');
+                                  retryErrorMessage.includes('SyntaxError') ||
+                                  retryErrorMessage.includes('Expected');
               const isTemporaryError = retryErrorMessage.includes('500') || 
                                       retryErrorMessage.includes('Internal Server Error') ||
                                       retryErrorMessage.includes('Temporary internal error') ||
@@ -107,8 +116,8 @@ export async function POST(request: Request) {
               
               if ((isJsonError || isTemporaryError) && retries < maxRetries - 1) {
                 retries++;
-                const waitTime = 5000 * retries; // Augmenter le délai à chaque retry
-                console.warn(`[Recover] Error fetching signatures page ${pageCount + 1} (attempt ${retries}/${maxRetries}): ${retryErrorMessage}. Retrying in ${waitTime}ms...`);
+                const waitTime = isJsonError ? 10000 : 5000 * retries; // Plus long délai pour les erreurs JSON
+                console.warn(`[Recover] Error fetching signatures page ${pageCount + 1} (attempt ${retries}/${maxRetries}): ${retryErrorMessage.substring(0, 100)}. Retrying in ${waitTime}ms...`);
                 await delay(waitTime);
                 continue;
               }
@@ -116,6 +125,26 @@ export async function POST(request: Request) {
               // Si ce n'est pas une erreur temporaire ou qu'on a épuisé les retries, throw
               throw retryError;
             }
+          }
+          
+          // Si on n'a toujours pas de signatures après les retries, c'est une erreur persistante
+          if (signatures.length === 0 && retries >= maxRetries) {
+            consecutivePageErrors++;
+            console.error(`[Recover] Failed to fetch signatures for page ${pageCount + 1} after ${maxRetries} attempts. Consecutive page errors: ${consecutivePageErrors}/${maxConsecutivePageErrors}`);
+            
+            // Si trop d'erreurs consécutives, sauter cette page et continuer
+            if (consecutivePageErrors >= maxConsecutivePageErrors) {
+              console.warn(`[Recover] Too many consecutive page errors (${consecutivePageErrors}), skipping page ${pageCount + 1} and continuing...`);
+              // Essayer de continuer avec la page suivante en utilisant une signature plus ancienne
+              // ou en arrêtant si on ne peut pas continuer
+              hasMore = false;
+              break;
+            }
+            
+            // Réessayer avec une limite encore plus petite ou passer à la page suivante
+            console.warn(`[Recover] Trying to continue with next page...`);
+            pageCount++;
+            continue;
           }
           
           if (signatures.length === 0) {
@@ -290,8 +319,19 @@ export async function POST(request: Request) {
           
           // Si erreur JSON ou temporaire (500, 503), retenter avec un délai
           if (isJsonError || isTemporaryError || errorMessage.includes('429') || errorMessage.includes('Rate limit')) {
+            consecutivePageErrors++;
             const waitTime = isJsonError ? 10000 : 10000; // 10 secondes pour les erreurs JSON ou temporaires
-            console.warn(`[Recover] ${isJsonError ? 'JSON parsing error' : 'Temporary error'} on page ${pageCount + 1}, waiting ${waitTime}ms before retrying...`);
+            console.warn(`[Recover] ${isJsonError ? 'JSON parsing error' : 'Temporary error'} on page ${pageCount + 1} (consecutive errors: ${consecutivePageErrors}/${maxConsecutivePageErrors}), waiting ${waitTime}ms before retrying...`);
+            
+            // Si trop d'erreurs consécutives, sauter cette page
+            if (consecutivePageErrors >= maxConsecutivePageErrors) {
+              console.warn(`[Recover] Too many consecutive page errors (${consecutivePageErrors}), skipping page ${pageCount + 1} and continuing...`);
+              // Essayer de continuer en sautant cette page problématique
+              // On ne peut pas vraiment "sauter" une page car on a besoin du 'before', donc on arrête
+              hasMore = false;
+              break;
+            }
+            
             await delay(waitTime);
             
             // Réessayer cette page
