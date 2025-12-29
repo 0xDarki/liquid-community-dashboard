@@ -1553,8 +1553,32 @@ export async function getTokenPrice(): Promise<{ price: number; priceInUsd: numb
       console.error('[getTokenPrice] Error getting token balance:', error);
     }
     
-    // Si tokenBalance est 0, essayer de le récupérer depuis les transactions récentes avec une recherche plus agressive
-    if (tokenBalance === 0) {
+    // Si tokenBalance est 0 ou très faible, essayer DexScreener d'abord (plus fiable)
+    if (tokenBalance === 0 || tokenBalance < 1000) {
+      console.log(`[getTokenPrice] Token balance is ${tokenBalance}, trying DexScreener API first...`);
+      try {
+        const dexScreenerResponse = await fetch(`https://api.dexscreener.com/latest/dex/pairs/solana/${CURRENT_LIQUIDITY_POOL_ADDRESS}`);
+        if (dexScreenerResponse.ok) {
+          const dexData = await dexScreenerResponse.json();
+          if (dexData.pairs && dexData.pairs.length > 0) {
+            const pair = dexData.pairs[0];
+            const SOL_MINT = 'So11111111111111111111111111111111111111112';
+            if (pair.baseToken?.address === SOL_MINT || pair.quoteToken?.address === SOL_MINT) {
+              const tokenReserve = pair.baseToken?.address === SOL_MINT ? parseFloat(pair.reserve1 || '0') : parseFloat(pair.reserve0 || '0');
+              if (tokenReserve > 1000) {
+                tokenBalance = tokenReserve;
+                console.log(`[getTokenPrice] Found token balance ${tokenBalance} from DexScreener (first attempt)`);
+              }
+            }
+          }
+        }
+      } catch (err) {
+        console.error('[getTokenPrice] Error fetching token balance from DexScreener:', err);
+      }
+    }
+    
+    // Si tokenBalance est toujours 0, essayer de le récupérer depuis les transactions récentes avec une recherche plus agressive
+    if (tokenBalance === 0 || tokenBalance < 1000) {
       console.log('[getTokenPrice] Token balance is 0, trying to find it in recent transactions...');
       try {
         const signatures = await connection.getSignaturesForAddress(publicKey, { limit: 20 });
