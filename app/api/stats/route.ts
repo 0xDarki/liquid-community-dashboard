@@ -67,12 +67,17 @@ export async function GET() {
     const totalSolAdded = storedMints.reduce((sum, tx) => sum + tx.solAmount, 0);
     const totalTokensAdded = storedMints.reduce((sum, tx) => sum + tx.tokenAmount, 0);
     
-    // Récupérer les balances actuelles
-    const { getSolBalance, getTokenBalance, LP_POOL_ADDRESS, TOKEN_MINT_ADDRESS } = await import('@/lib/solana');
-    const [solBalance, tokenBalance] = await Promise.all([
+    // Récupérer les balances actuelles et la supply du token
+    const { getSolBalance, getTokenBalance, getTokenSupply, LP_POOL_ADDRESS, TOKEN_MINT_ADDRESS } = await import('@/lib/solana');
+    const [solBalance, tokenBalance, tokenSupply] = await Promise.all([
       getSolBalance(LP_POOL_ADDRESS),
       getTokenBalance(LP_POOL_ADDRESS, TOKEN_MINT_ADDRESS),
+      getTokenSupply(TOKEN_MINT_ADDRESS),
     ]);
+    
+    // Calculer le burn : supply initiale (1,000,000,000) - supply actuelle
+    const INITIAL_SUPPLY = 1000000000; // 1 milliard
+    const tokenBurned = tokenSupply > 0 ? INITIAL_SUPPLY - tokenSupply : null;
     
     // Récupérer les transfers (limité pour éviter trop de requêtes)
     const { getTransferTransactions } = await import('@/lib/solana');
@@ -104,6 +109,8 @@ export async function GET() {
       totalSolAdded,
       totalTokensAdded,
       totalTokensTransferred,
+      tokenSupply: tokenSupply > 0 ? tokenSupply : null,
+      tokenBurned,
       tokenPrice: tokenPrice?.price ?? null,
       tokenPriceInUsd: tokenPrice?.priceInUsd ?? null,
       solPrice: tokenPrice?.solPrice ?? null,

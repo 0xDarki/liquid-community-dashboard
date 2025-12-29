@@ -88,6 +88,8 @@ export default function Dashboard() {
       totalSolAdded,
       totalTokensAdded,
       totalTokensTransferred: 0,
+      tokenSupply: null,
+      tokenBurned: null,
       tokenPrice: null,
       tokenPriceInUsd: null,
       solPrice: null,

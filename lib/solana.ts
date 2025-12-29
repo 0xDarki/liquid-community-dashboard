@@ -81,6 +81,28 @@ export async function getSolBalance(address: string): Promise<number> {
   }
 }
 
+// Fonction pour obtenir la supply totale d'un token
+export async function getTokenSupply(mintAddress: string): Promise<number> {
+  try {
+    const mintPublicKey = new PublicKey(mintAddress);
+    const supply = await connection.getTokenSupply(mintPublicKey);
+    
+    if (supply && supply.value) {
+      // Convertir en nombre décimal (uiAmount)
+      const decimals = supply.value.decimals;
+      const amount = supply.value.amount;
+      const uiAmount = Number(amount) / Math.pow(10, decimals);
+      console.log(`[getTokenSupply] Token supply: ${uiAmount.toLocaleString('en-US', { maximumFractionDigits: 2 })}`);
+      return uiAmount;
+    }
+    
+    return 0;
+  } catch (error: any) {
+    console.error('[getTokenSupply] Error fetching token supply:', error);
+    return 0;
+  }
+}
+
 // Fonction pour obtenir le solde de tokens d'une adresse
 export async function getTokenBalance(address: string, mintAddress: string): Promise<number> {
   try {
