@@ -61,3 +61,4 @@ CREATE TRIGGER update_price_updated_at BEFORE UPDATE ON price
 CREATE TRIGGER update_history_updated_at BEFORE UPDATE ON history
   FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
+

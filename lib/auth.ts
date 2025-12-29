@@ -57,3 +57,4 @@ export function isAuthorizedDomainClient(): boolean {
          normalizedCurrent.endsWith(`.${normalizedAuthorized}`);
 }
 
+

@@ -838,6 +838,43 @@ export default function ModernChart({ transactions }: ModernChartProps) {
         </div>
         </div>
       </div>
+
+      {/* DexScreener Embed */}
+      <div className="mt-6">
+        <div className="bg-white dark:bg-gray-800 rounded-xl shadow-lg p-4 border border-gray-200 dark:border-gray-700">
+          <h3 className="text-base font-semibold text-gray-900 dark:text-white mb-3">
+            DexScreener Chart
+          </h3>
+          <style dangerouslySetInnerHTML={{
+            __html: `
+              #dexscreener-embed {
+                position: relative;
+                width: 100%;
+                padding-bottom: 125%;
+              }
+              @media (min-width: 1400px) {
+                #dexscreener-embed {
+                  padding-bottom: 65%;
+                }
+              }
+              #dexscreener-embed iframe {
+                position: absolute;
+                width: 100%;
+                height: 100%;
+                top: 0;
+                left: 0;
+                border: 0;
+              }
+            `
+          }} />
+          <div id="dexscreener-embed">
+            <iframe 
+              src="https://dexscreener.com/solana/GTPAJHzbVA3u9qTPzECVeDYctEx4ovP4TLQ6cHPjR2mk?embed=1&loadChartSettings=0&trades=0&tabs=0&info=0&chartLeftToolbar=0&chartTheme=dark&theme=dark&chartStyle=0&chartType=usd&interval=15"
+              title="DexScreener Chart"
+            />
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
