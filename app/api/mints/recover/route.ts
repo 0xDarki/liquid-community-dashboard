@@ -68,11 +68,11 @@ export async function POST(request: Request) {
       const allNewTransactions: any[] = [];
       let before: string | undefined = undefined;
       let pageCount = 0;
-      const maxPages = 100; // Augmenter le nombre de pages pour récupérer plus de transactions
-      const signaturesPerPage = 500; // Réduire à 500 pour éviter les réponses JSON trop grandes/malformées
+      const maxPages = 200; // Augmenter le nombre de pages pour compenser la réduction de taille
+      let signaturesPerPage = 100; // Commencer avec 100 signatures (beaucoup plus petit pour éviter les erreurs JSON)
       let hasMore = true;
       let consecutivePageErrors = 0;
-      const maxConsecutivePageErrors = 3; // Après 3 erreurs consécutives sur une page, la sauter
+      const maxConsecutivePageErrors = 2; // Après 2 erreurs consécutives, réduire encore la taille
       
       // Fonction helper pour delay
       const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
@@ -91,8 +91,17 @@ export async function POST(request: Request) {
           
           while (retries < maxRetries) {
             try {
-              // Essayer avec une limite réduite si on a déjà eu des erreurs
-              const currentLimit = retries > 0 ? Math.min(signaturesPerPage, 250) : signaturesPerPage;
+              // Réduire progressivement la limite si on a des erreurs
+              let currentLimit = signaturesPerPage;
+              if (consecutivePageErrors > 0) {
+                // Réduire de moitié à chaque erreur consécutive
+                currentLimit = Math.max(10, Math.floor(signaturesPerPage / Math.pow(2, consecutivePageErrors)));
+                console.log(`[Recover] Using reduced limit of ${currentLimit} due to ${consecutivePageErrors} consecutive errors`);
+              }
+              if (retries > 0) {
+                // Réduire encore plus lors des retries
+                currentLimit = Math.max(10, Math.floor(currentLimit / 2));
+              }
               
               signatures = await connection.getSignaturesForAddress(publicKey, {
                 limit: currentLimit,
@@ -101,13 +110,19 @@ export async function POST(request: Request) {
               
               // Succès, réinitialiser le compteur d'erreurs de page
               consecutivePageErrors = 0;
+              // Si on a réussi avec une limite réduite, continuer avec cette limite pour les prochaines pages
+              if (currentLimit < signaturesPerPage) {
+                signaturesPerPage = currentLimit;
+                console.log(`[Recover] Successfully fetched with limit ${currentLimit}, using this limit for future pages`);
+              }
               break; // Succès, sortir de la boucle
             } catch (retryError: any) {
               const retryErrorMessage = retryError?.message || '';
               const isJsonError = retryErrorMessage.includes('JSON') || 
                                   retryErrorMessage.includes('Unexpected token') ||
                                   retryErrorMessage.includes('SyntaxError') ||
-                                  retryErrorMessage.includes('Expected');
+                                  retryErrorMessage.includes('Expected') ||
+                                  retryErrorMessage.includes('Unterminated');
               const isTemporaryError = retryErrorMessage.includes('500') || 
                                       retryErrorMessage.includes('Internal Server Error') ||
                                       retryErrorMessage.includes('Temporary internal error') ||
@@ -116,8 +131,8 @@ export async function POST(request: Request) {
               
               if ((isJsonError || isTemporaryError) && retries < maxRetries - 1) {
                 retries++;
-                const waitTime = isJsonError ? 10000 : 5000 * retries; // Plus long délai pour les erreurs JSON
-                console.warn(`[Recover] Error fetching signatures page ${pageCount + 1} (attempt ${retries}/${maxRetries}): ${retryErrorMessage.substring(0, 100)}. Retrying in ${waitTime}ms...`);
+                const waitTime = isJsonError ? 15000 : 5000 * retries; // Plus long délai pour les erreurs JSON
+                console.warn(`[Recover] Error fetching signatures page ${pageCount + 1} (attempt ${retries}/${maxRetries}): ${retryErrorMessage.substring(0, 150)}. Retrying in ${waitTime}ms with smaller limit...`);
                 await delay(waitTime);
                 continue;
               }
@@ -132,17 +147,20 @@ export async function POST(request: Request) {
             consecutivePageErrors++;
             console.error(`[Recover] Failed to fetch signatures for page ${pageCount + 1} after ${maxRetries} attempts. Consecutive page errors: ${consecutivePageErrors}/${maxConsecutivePageErrors}`);
             
-            // Si trop d'erreurs consécutives, sauter cette page et continuer
+            // Si trop d'erreurs consécutives, réduire drastiquement la taille et continuer
             if (consecutivePageErrors >= maxConsecutivePageErrors) {
-              console.warn(`[Recover] Too many consecutive page errors (${consecutivePageErrors}), skipping page ${pageCount + 1} and continuing...`);
-              // Essayer de continuer avec la page suivante en utilisant une signature plus ancienne
-              // ou en arrêtant si on ne peut pas continuer
-              hasMore = false;
-              break;
+              const newLimit = Math.max(10, Math.floor(signaturesPerPage / 4));
+              console.warn(`[Recover] Too many consecutive page errors (${consecutivePageErrors}), reducing page size to ${newLimit} and continuing...`);
+              signaturesPerPage = newLimit;
+              consecutivePageErrors = 0; // Réinitialiser pour donner une nouvelle chance
+              // Réessayer cette page avec la nouvelle limite plus petite
+              pageCount--; // Décrémenter pour réessayer la même page
+              await delay(5000);
+              continue;
             }
             
-            // Réessayer avec une limite encore plus petite ou passer à la page suivante
-            console.warn(`[Recover] Trying to continue with next page...`);
+            // Réessayer avec une limite encore plus petite
+            console.warn(`[Recover] Trying to continue with reduced limit...`);
             pageCount++;
             continue;
           }
