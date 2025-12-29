@@ -1088,35 +1088,38 @@ export async function getTransferTransactions(limit: number = 50): Promise<Trans
     let consecutiveErrors = 0;
     const maxConsecutiveErrors = 3;
     
-    // Chercher les transactions qui impliquent le buyback address
+    // Chercher les transactions depuis le token mint (plus efficace que depuis le buyback wallet)
+    // Cela filtre automatiquement pour ne récupérer que les transactions impliquant ce token
     try {
-      const buybackPublicKey = new PublicKey(BUYBACK_ADDRESS);
+      const tokenMintPublicKey = new PublicKey(TOKEN_MINT_ADDRESS);
       // Utiliser la limite fournie, mais avec un maximum raisonnable pour éviter les timeouts
-      const buybackLimit = Math.min(limit, 1000); // Maximum 1000 transactions par page
+      const tokenLimit = Math.min(limit * 3, 1000); // Récupérer 3x plus car on va filtrer
       await delay(MIN_REQUEST_DELAY); // Délai avant la première requête
       
       // Pagination pour récupérer toutes les transactions si nécessaire
       let before: string | undefined = undefined;
       let allSignatures: any[] = [];
       let pageCount = 0;
-      const maxPages = Math.ceil(limit / 1000); // Maximum de pages nécessaires
+      const maxPages = Math.ceil((limit * 3) / 1000); // Maximum de pages nécessaires
       
-      while (pageCount < maxPages && allSignatures.length < limit) {
-        const pageLimit = Math.min(1000, limit - allSignatures.length);
-        const buybackSignatures = await connection.getSignaturesForAddress(buybackPublicKey, { 
+      while (pageCount < maxPages && transactions.length < limit) {
+        const pageLimit = Math.min(1000, tokenLimit - allSignatures.length);
+        const tokenSignatures = await connection.getSignaturesForAddress(tokenMintPublicKey, { 
           limit: pageLimit,
           before: before 
         });
         
-        if (buybackSignatures.length === 0) break;
+        if (tokenSignatures.length === 0) break;
         
-        allSignatures = allSignatures.concat(buybackSignatures);
-        before = buybackSignatures[buybackSignatures.length - 1].signature;
+        allSignatures = allSignatures.concat(tokenSignatures);
+        before = tokenSignatures[tokenSignatures.length - 1].signature;
         pageCount++;
         
-        if (buybackSignatures.length < pageLimit) break; // Plus de transactions disponibles
+        if (tokenSignatures.length < pageLimit) break; // Plus de transactions disponibles
         if (pageCount > 0) await delay(MIN_REQUEST_DELAY); // Délai entre les pages
       }
+      
+      console.log(`[getTransferTransactions] Found ${allSignatures.length} token transactions, filtering for buyback transfers...`);
       
       for (const sigInfo of allSignatures) {
         if (EXCLUDED_TRANSACTIONS.includes(sigInfo.signature) || seenSignatures.has(sigInfo.signature)) {
@@ -1162,10 +1165,27 @@ export async function getTransferTransactions(limit: number = 50): Promise<Trans
               continue;
             }
             
+            // Filtrer rapidement : vérifier si le buyback est dans les postTokenBalances avant de parser
+            const hasBuybackTransfer = tx.meta?.postTokenBalances?.some(
+              (b: any) => b.owner === BUYBACK_ADDRESS && b.mint === TOKEN_MINT_ADDRESS
+            );
+            
+            // Si pas de transfer vers le buyback, skip immédiatement (économise le parsing)
+            if (!hasBuybackTransfer) {
+              processedCount++;
+              consecutiveErrors = 0;
+              continue;
+            }
+            
             const transferTx = parseTransferTransaction(tx);
             if (transferTx && !EXCLUDED_TRANSACTIONS.includes(transferTx.signature)) {
               transactions.push(transferTx);
               seenSignatures.add(transferTx.signature);
+              
+              // Arrêter si on a atteint la limite
+              if (transactions.length >= limit) {
+                break;
+              }
             }
           }
           processedCount++;
