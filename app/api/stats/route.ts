@@ -67,13 +67,15 @@ export async function GET() {
     const totalSolAdded = storedMints.reduce((sum, tx) => sum + tx.solAmount, 0);
     const totalTokensAdded = storedMints.reduce((sum, tx) => sum + tx.tokenAmount, 0);
     
-    // Récupérer les balances actuelles et la supply du token (pour l'affichage, même si on ne l'utilise plus pour le calcul du burn)
-    const { getSolBalance, getTokenBalance, getTokenSupply, CURRENT_LIQUIDITY_POOL_ADDRESS, TOKEN_MINT_ADDRESS } = await import('@/lib/solana');
-    const [solBalance, tokenBalance, tokenSupply] = await Promise.all([
-      getSolBalance(CURRENT_LIQUIDITY_POOL_ADDRESS),
-      getTokenBalance(CURRENT_LIQUIDITY_POOL_ADDRESS, TOKEN_MINT_ADDRESS),
-      getTokenSupply(TOKEN_MINT_ADDRESS).catch(() => null), // Récupérer la supply pour l'affichage, ignorer les erreurs
-    ]);
+    // Récupérer les balances actuelles depuis tokenPrice (déjà récupérées) et la supply du token
+    const { getTokenSupply, TOKEN_MINT_ADDRESS } = await import('@/lib/solana');
+    const tokenSupply = await getTokenSupply(TOKEN_MINT_ADDRESS).catch(() => null); // Récupérer la supply pour l'affichage, ignorer les erreurs
+    
+    // Utiliser les balances depuis tokenPrice (qui sont déjà récupérées depuis CURRENT_LIQUIDITY_POOL_ADDRESS)
+    const solBalance = tokenPrice?.solBalance ?? 0;
+    const tokenBalance = tokenPrice?.tokenBalance ?? 0;
+    
+    console.log(`[Stats API] Current pool balances: ${solBalance} SOL, ${tokenBalance} tokens`);
     
     // Récupérer les transactions de transfert depuis le stockage (pas d'appel RPC)
     const { loadStoredTransfers } = await import('@/lib/storage');

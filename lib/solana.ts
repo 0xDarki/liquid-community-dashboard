@@ -1459,7 +1459,7 @@ export async function getTokenPrice(): Promise<{ price: number; priceInUsd: numb
     let tokenBalance = 0;
     try {
       tokenBalance = await getTokenBalance(CURRENT_LIQUIDITY_POOL_ADDRESS, TOKEN_MINT_ADDRESS);
-      console.log(`[getTokenPrice] Token balance from getTokenBalance: ${tokenBalance}`);
+      console.log(`[getTokenPrice] Token balance from getTokenBalance for ${CURRENT_LIQUIDITY_POOL_ADDRESS}: ${tokenBalance}`);
     } catch (error) {
       console.error('[getTokenPrice] Error getting token balance:', error);
     }
