@@ -21,6 +21,7 @@ export default function Dashboard() {
   const [currentPage, setCurrentPage] = useState(1);
   const [transactionsPerPage] = useState(20);
   const [isAuthorizedDomain, setIsAuthorizedDomain] = useState<boolean>(true);
+  const [importingCSV, setImportingCSV] = useState(false);
   
   // Vérifier si on est sur le domaine autorisé
   useEffect(() => {
@@ -498,6 +499,65 @@ export default function Dashboard() {
                       </span>
                     )}
                   </button>
+                  <label
+                    className="px-5 py-2.5 bg-gradient-to-r from-purple-500 to-indigo-600 text-white rounded-xl hover:from-purple-600 hover:to-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 text-sm font-semibold shadow-lg hover:shadow-xl transform hover:scale-105 active:scale-95 cursor-pointer"
+                    title="Import transfers from CSV file"
+                  >
+                    <input
+                      type="file"
+                      accept=".csv"
+                      className="hidden"
+                      onChange={async (e) => {
+                        const file = e.target.files?.[0];
+                        if (!file) return;
+                        
+                        setImportingCSV(true);
+                        try {
+                          const formData = new FormData();
+                          formData.append('file', file);
+                          
+                          const res = await fetch('/api/transfers/import', {
+                            method: 'POST',
+                            body: formData,
+                          });
+                          
+                          const data = await res.json();
+                          
+                          if (res.ok && data.success) {
+                            alert(`Successfully imported ${data.imported} transfers${data.duplicates > 0 ? ` (${data.duplicates} duplicates skipped)` : ''}. Total: ${data.total} transfers.`);
+                            // Rafraîchir les données pour mettre à jour les stats
+                            await fetchData();
+                          } else {
+                            alert(`Error: ${data.error || 'Failed to import CSV'}`);
+                          }
+                        } catch (error) {
+                          console.error('Error importing CSV:', error);
+                          alert('Error importing CSV file');
+                        } finally {
+                          setImportingCSV(false);
+                          // Réinitialiser l'input pour permettre de réimporter le même fichier
+                          e.target.value = '';
+                        }
+                      }}
+                      disabled={importingCSV || !isAuthorizedDomain}
+                    />
+                    {importingCSV ? (
+                      <span className="flex items-center gap-2">
+                        <svg className="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                        </svg>
+                        Importing...
+                      </span>
+                    ) : (
+                      <span className="flex items-center gap-2">
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+                        </svg>
+                        Import CSV
+                      </span>
+                    )}
+                  </label>
                 </>
               )}
             </div>
