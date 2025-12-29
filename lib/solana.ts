@@ -1466,8 +1466,59 @@ export async function getTokenPrice(): Promise<{ price: number; priceInUsd: numb
     const publicKey = new PublicKey(CURRENT_LIQUIDITY_POOL_ADDRESS);
     
     // Récupérer le solde SOL de la LP
-    const solBalance = await connection.getBalance(publicKey);
-    const solBalanceInSol = solBalance / 1e9; // Convertir lamports en SOL
+    let solBalance = await connection.getBalance(publicKey);
+    let solBalanceInSol = solBalance / 1e9; // Convertir lamports en SOL
+    console.log(`[getTokenPrice] SOL balance from getBalance for ${CURRENT_LIQUIDITY_POOL_ADDRESS}: ${solBalanceInSol} SOL`);
+    
+    // Si solBalance est 0 ou très faible, essayer de le récupérer depuis les transactions récentes
+    if (solBalanceInSol === 0 || solBalanceInSol < 0.1) {
+      console.log('[getTokenPrice] SOL balance is 0 or very low, trying to find it in recent transactions...');
+      try {
+        const signatures = await connection.getSignaturesForAddress(publicKey, { limit: 20 });
+        let maxSolBalance = 0;
+        for (const sigInfo of signatures) {
+          try {
+            const tx = await connection.getParsedTransaction(sigInfo.signature, {
+              maxSupportedTransactionVersion: 0,
+            });
+            if (tx?.meta?.postBalances) {
+              // Chercher le solde SOL dans postBalances (index correspond à l'index du compte dans accountKeys)
+              const accountKeys = tx.transaction.message.accountKeys.map((key: any) => 
+                typeof key === 'string' ? key : key.pubkey.toString()
+              );
+              const poolIndex = accountKeys.findIndex((key: string) => key === CURRENT_LIQUIDITY_POOL_ADDRESS);
+              if (poolIndex >= 0 && poolIndex < tx.meta.postBalances.length) {
+                const balance = tx.meta.postBalances[poolIndex] / 1e9; // Convertir lamports en SOL
+                if (balance > maxSolBalance) {
+                  maxSolBalance = balance;
+                }
+              }
+            }
+            // Aussi chercher dans preBalances
+            if (tx?.meta?.preBalances) {
+              const accountKeys = tx.transaction.message.accountKeys.map((key: any) => 
+                typeof key === 'string' ? key : key.pubkey.toString()
+              );
+              const poolIndex = accountKeys.findIndex((key: string) => key === CURRENT_LIQUIDITY_POOL_ADDRESS);
+              if (poolIndex >= 0 && poolIndex < tx.meta.preBalances.length) {
+                const balance = tx.meta.preBalances[poolIndex] / 1e9; // Convertir lamports en SOL
+                if (balance > maxSolBalance) {
+                  maxSolBalance = balance;
+                }
+              }
+            }
+          } catch (err) {
+            continue;
+          }
+        }
+        if (maxSolBalance > 0) {
+          solBalanceInSol = maxSolBalance;
+          console.log(`[getTokenPrice] Found SOL balance ${solBalanceInSol} in recent transactions`);
+        }
+      } catch (err) {
+        console.error('[getTokenPrice] Error searching transactions for SOL balance:', err);
+      }
+    }
     
     // Récupérer le solde de tokens de la LP
     let tokenBalance = 0;
@@ -1533,25 +1584,59 @@ export async function getTokenPrice(): Promise<{ price: number; priceInUsd: numb
             const dexData = await dexScreenerResponse.json();
             if (dexData.pairs && dexData.pairs.length > 0) {
               const pair = dexData.pairs[0];
-              // DexScreener retourne la liquidité en USD, on peut calculer le token balance depuis là
-              if (pair.liquidity?.usd && pair.priceUsd) {
-                // Liquidité USD = (solBalance * solPrice) + (tokenBalance * tokenPriceInUsd)
-                // On connaît déjà solBalance et on va avoir solPrice plus tard, mais on peut essayer de calculer
-                // tokenBalance = (liquidityUSD - solBalance * solPrice) / tokenPriceInUsd
-                // Mais on n'a pas encore solPrice ici, donc on va juste logger pour debug
-                console.log('[getTokenPrice] DexScreener data:', {
-                  liquidityUSD: pair.liquidity?.usd,
-                  priceUsd: pair.priceUsd,
-                  reserve0: pair.reserve0,
-                  reserve1: pair.reserve1,
-                });
-                // DexScreener peut avoir les réserves, mais il faut identifier lequel est SOL et lequel est le token
-                // Pour l'instant, on ne peut pas utiliser directement sans savoir l'ordre
+              console.log('[getTokenPrice] DexScreener data:', {
+                liquidityUSD: pair.liquidity?.usd,
+                priceUsd: pair.priceUsd,
+                reserve0: pair.reserve0,
+                reserve1: pair.reserve1,
+                token0: pair.baseToken?.address,
+                token1: pair.quoteToken?.address,
+              });
+              // DexScreener retourne les réserves, identifier lequel est SOL et lequel est le token
+              // SOL mint: So11111111111111111111111111111111111111112
+              const SOL_MINT = 'So11111111111111111111111111111111111111112';
+              if (pair.baseToken?.address === SOL_MINT || pair.quoteToken?.address === SOL_MINT) {
+                // Si SOL est baseToken, reserve0 est SOL, reserve1 est le token
+                // Si SOL est quoteToken, reserve1 est SOL, reserve0 est le token
+                const solReserve = pair.baseToken?.address === SOL_MINT ? parseFloat(pair.reserve0 || '0') : parseFloat(pair.reserve1 || '0');
+                const tokenReserve = pair.baseToken?.address === SOL_MINT ? parseFloat(pair.reserve1 || '0') : parseFloat(pair.reserve0 || '0');
+                if (solReserve > 0 && solBalanceInSol === 0) {
+                  solBalanceInSol = solReserve;
+                  console.log(`[getTokenPrice] Found SOL balance ${solBalanceInSol} from DexScreener`);
+                }
+                if (tokenReserve > 0 && tokenBalance === 0) {
+                  tokenBalance = tokenReserve;
+                  console.log(`[getTokenPrice] Found token balance ${tokenBalance} from DexScreener`);
+                }
               }
             }
           }
         } catch (err) {
           console.error('[getTokenPrice] Error fetching from DexScreener:', err);
+        }
+      }
+      
+      // Si solBalance est toujours 0, essayer aussi DexScreener
+      if (solBalanceInSol === 0 || solBalanceInSol < 0.1) {
+        console.log('[getTokenPrice] SOL balance still 0 or very low, trying DexScreener API...');
+        try {
+          const dexScreenerResponse = await fetch(`https://api.dexscreener.com/latest/dex/pairs/solana/${CURRENT_LIQUIDITY_POOL_ADDRESS}`);
+          if (dexScreenerResponse.ok) {
+            const dexData = await dexScreenerResponse.json();
+            if (dexData.pairs && dexData.pairs.length > 0) {
+              const pair = dexData.pairs[0];
+              const SOL_MINT = 'So11111111111111111111111111111111111111112';
+              if (pair.baseToken?.address === SOL_MINT || pair.quoteToken?.address === SOL_MINT) {
+                const solReserve = pair.baseToken?.address === SOL_MINT ? parseFloat(pair.reserve0 || '0') : parseFloat(pair.reserve1 || '0');
+                if (solReserve > 0) {
+                  solBalanceInSol = solReserve;
+                  console.log(`[getTokenPrice] Found SOL balance ${solBalanceInSol} from DexScreener (fallback)`);
+                }
+              }
+            }
+          }
+        } catch (err) {
+          console.error('[getTokenPrice] Error fetching SOL balance from DexScreener:', err);
         }
       }
     }

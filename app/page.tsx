@@ -337,7 +337,7 @@ export default function Dashboard() {
           <div className="flex flex-col md:flex-row md:items-center md:justify-between mb-4">
             <div>
                 <h1 className="text-4xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 dark:from-blue-400 dark:to-purple-400 bg-clip-text text-transparent mb-2">
-                Liquid Community Dashboard
+                Liquid Dashboard
               </h1>
               <p className="text-sm text-gray-600 dark:text-gray-400">
                   Liquidity additions tracking - each liquidity addition is followed by a burn. Tek built by @leyten. Dashboard built by @0xDarki.
