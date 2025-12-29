@@ -666,17 +666,20 @@ export default function Dashboard() {
                   ? (() => {
                       const marketCap = stats.tokenSupply * stats.tokenPriceInUsd;
                       const solLiquidity = stats.solBalance * stats.solPrice;
-                      // Si tokenBalance est null, 0 ou très faible (< 1 token), multiplier la liquidité SOL par 2
-                      // Sinon, additionner SOL + tokens
+                      // Utiliser tokenPriceToken si disponible (plus fiable), sinon stats.tokenBalance
+                      const tokenBalance = stats.tokenPriceToken ?? stats.tokenBalance ?? 0;
+                      const tokenLiquidity = tokenBalance * stats.tokenPriceInUsd;
+                      
+                      // Si tokenBalance est 0 ou si la liquidité en tokens est < 10% de la liquidité SOL, multiplier par 2
+                      // Cela signifie qu'on n'a pas réussi à récupérer les tokens ou qu'ils sont négligeables
                       let totalLiquidity: number;
-                      if (stats.tokenBalance == null || stats.tokenBalance <= 0 || (stats.tokenBalance < 1 && stats.tokenPriceInUsd)) {
+                      if (tokenBalance <= 0 || tokenLiquidity < solLiquidity * 0.1) {
                         // Multiplier par 2 si on n'a pas les tokens ou s'ils sont négligeables
                         totalLiquidity = solLiquidity * 2;
-                        console.log(`[Market Cap Ratio] tokenBalance is ${stats.tokenBalance}, using SOL * 2 = ${totalLiquidity}`);
+                        console.log(`[Market Cap Ratio] tokenBalance=${tokenBalance}, tokenLiquidity=${tokenLiquidity}, solLiquidity=${solLiquidity}, using SOL * 2 = ${totalLiquidity}`);
                       } else {
-                        const tokenLiquidity = stats.tokenBalance * stats.tokenPriceInUsd;
                         totalLiquidity = solLiquidity + tokenLiquidity;
-                        console.log(`[Market Cap Ratio] tokenBalance is ${stats.tokenBalance}, using SOL + tokens = ${totalLiquidity}`);
+                        console.log(`[Market Cap Ratio] tokenBalance=${tokenBalance}, tokenLiquidity=${tokenLiquidity}, solLiquidity=${solLiquidity}, using SOL + tokens = ${totalLiquidity}`);
                       }
                       const ratio = totalLiquidity > 0 ? marketCap / totalLiquidity : null;
                       return ratio != null ? ratio.toFixed(2) : 'N/A';
@@ -686,14 +689,15 @@ export default function Dashboard() {
                   ? (() => {
                       const marketCap = stats.tokenSupply * stats.tokenPriceInUsd;
                       const solLiquidity = stats.solBalance * stats.solPrice;
-                      // Si tokenBalance est null, 0 ou très faible (< 1 token), multiplier la liquidité SOL par 2
-                      // Sinon, additionner SOL + tokens
+                      // Utiliser tokenPriceToken si disponible (plus fiable), sinon stats.tokenBalance
+                      const tokenBalance = stats.tokenPriceToken ?? stats.tokenBalance ?? 0;
+                      const tokenLiquidity = tokenBalance * stats.tokenPriceInUsd;
+                      
+                      // Si tokenBalance est 0 ou si la liquidité en tokens est < 10% de la liquidité SOL, multiplier par 2
                       let totalLiquidity: number;
-                      if (stats.tokenBalance == null || stats.tokenBalance <= 0 || (stats.tokenBalance < 1 && stats.tokenPriceInUsd)) {
-                        // Multiplier par 2 si on n'a pas les tokens ou s'ils sont négligeables
+                      if (tokenBalance <= 0 || tokenLiquidity < solLiquidity * 0.1) {
                         totalLiquidity = solLiquidity * 2;
                       } else {
-                        const tokenLiquidity = stats.tokenBalance * stats.tokenPriceInUsd;
                         totalLiquidity = solLiquidity + tokenLiquidity;
                       }
                       return `MC: $${marketCap.toLocaleString('en-US', { maximumFractionDigits: 0 })} / Liq: $${totalLiquidity.toLocaleString('en-US', { maximumFractionDigits: 0 })}`;
