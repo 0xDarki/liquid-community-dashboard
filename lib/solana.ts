@@ -208,27 +208,8 @@ export async function getTokenBalance(address: string, mintAddress: string): Pro
       console.log('[getTokenBalance] Transaction search failed:', err);
     }
     
-    // Dernière tentative: chercher tous les comptes tokens sans filtre mint
-    try {
-      // Essayer de récupérer tous les comptes tokens de cette adresse
-      const allTokenAccounts = await connection.getParsedTokenAccountsByOwner(publicKey, {});
-      
-      if (allTokenAccounts.value.length > 0) {
-        console.log(`[getTokenBalance] Found ${allTokenAccounts.value.length} token accounts, searching for mint ${mintAddress}...`);
-        for (const account of allTokenAccounts.value) {
-          const accountMint = account.account.data.parsed.info.mint;
-          if (accountMint === mintAddress) {
-            const balance = account.account.data.parsed.info.tokenAmount.uiAmount;
-            if (balance && balance > 0) {
-              console.log(`[getTokenBalance] Found balance ${balance} in token account without mint filter`);
-              return balance;
-            }
-          }
-        }
-      }
-    } catch (err) {
-      console.log('[getTokenBalance] All accounts search failed:', err);
-    }
+    // Note: getParsedTokenAccountsByOwner nécessite un filtre, donc on ne peut pas récupérer tous les comptes sans filtre
+    // On a déjà essayé avec le filtre mint et dans les transactions récentes
     
     console.log(`[getTokenBalance] Could not find token balance for ${address}`);
     return 0;
