@@ -1100,50 +1100,50 @@ export async function getTransferTransactions(limit: number = 50): Promise<Trans
   let buybackSkippedCount = 0;
   
   try {
-    // Chercher les transactions depuis le buyback address (beaucoup moins de transactions à traiter)
-    // On filtre ensuite pour ne garder que celles qui impliquent le token mint
+    // Chercher les transactions depuis l'adresse source des burns (LYANE1HpjnQWjKW6a6NJLuuyP4fsX77sUF6YUHb2ktA)
+    // C'est encore plus efficace car il n'y a que ~17 transactions de burn depuis cette adresse
     try {
-      const buybackPublicKey = new PublicKey(BUYBACK_ADDRESS);
-      // Récupérer toutes les transactions du buyback (il n'y en a que ~17 qui concernent le token)
-      const buybackLimit = limit === 0 ? 1000 : Math.max(limit * 50, 1000); // Limite élevée car on va filtrer
-      const initialDelay = limit === 0 ? MIN_REQUEST_DELAY * 5 : MIN_REQUEST_DELAY; // Délai plus long pour getAll
+      const burnSourcePublicKey = new PublicKey(BURN_SOURCE_ADDRESS);
+      // Récupérer toutes les transactions de l'adresse source (il n'y en a que ~17 qui sont des burns)
+      const sourceLimit = limit === 0 ? 100 : Math.max(limit * 10, 100); // Limite réduite car on filtre précisément
+      const initialDelay = limit === 0 ? MIN_REQUEST_DELAY * 10 : MIN_REQUEST_DELAY * 2; // Délai très long pour getAll
       await delay(initialDelay); // Délai avant la première requête
       
       // Pagination pour récupérer toutes les transactions si nécessaire
       let before: string | undefined = undefined;
       let pageCount = 0;
-      const maxPages = limit === 0 ? 10 : Math.ceil(buybackLimit / 1000); // Maximum 10 pages pour getAll
+      const maxPages = limit === 0 ? 5 : Math.ceil(sourceLimit / 1000); // Maximum 5 pages pour getAll
       let consecutive429Errors = 0;
-      const max429Errors = 5; // Arrêter après 5 erreurs 429 consécutives
+      const max429Errors = 3; // Arrêter après 3 erreurs 429 consécutives
       
-      while (pageCount < maxPages && allSignatures.length < buybackLimit) {
+      while (pageCount < maxPages && allSignatures.length < sourceLimit) {
         // Si trop d'erreurs 429, augmenter drastiquement le délai
         if (consecutive429Errors > 0) {
-          const backoffDelay = Math.min(consecutive429Errors * 5000, 30000); // Max 30 secondes
+          const backoffDelay = Math.min(consecutive429Errors * 10000, 60000); // Max 60 secondes
           console.log(`[getTransferTransactions] Backing off after 429 errors, waiting ${backoffDelay}ms...`);
           await delay(backoffDelay);
         }
         
-        const pageLimit = Math.min(1000, buybackLimit - allSignatures.length);
+        const pageLimit = Math.min(1000, sourceLimit - allSignatures.length);
         
         try {
-          const buybackSignatures = await connection.getSignaturesForAddress(buybackPublicKey, { 
+          const sourceSignatures = await connection.getSignaturesForAddress(burnSourcePublicKey, { 
             limit: pageLimit,
             before: before 
           });
           
           consecutive429Errors = 0; // Réinitialiser le compteur en cas de succès
           
-          if (buybackSignatures.length === 0) break;
+          if (sourceSignatures.length === 0) break;
           
-          allSignatures = allSignatures.concat(buybackSignatures);
-          before = buybackSignatures[buybackSignatures.length - 1].signature;
+          allSignatures = allSignatures.concat(sourceSignatures);
+          before = sourceSignatures[sourceSignatures.length - 1].signature;
           pageCount++;
           
-          if (buybackSignatures.length < pageLimit) break; // Plus de transactions disponibles
+          if (sourceSignatures.length < pageLimit) break; // Plus de transactions disponibles
           
-          // Délai entre les pages (plus long pour getAll)
-          const pageDelay = limit === 0 ? MIN_REQUEST_DELAY * 5 : MIN_REQUEST_DELAY * 2;
+          // Délai entre les pages (très long pour getAll)
+          const pageDelay = limit === 0 ? MIN_REQUEST_DELAY * 10 : MIN_REQUEST_DELAY * 3;
           await delay(pageDelay);
           
           // Si on a déjà trouvé assez de transfers et qu'on a une limite, on peut arrêter de récupérer
@@ -1165,7 +1165,7 @@ export async function getTransferTransactions(limit: number = 50): Promise<Trans
         }
       }
       
-      console.log(`[getTransferTransactions] Found ${allSignatures.length} buyback transactions, filtering for $LIQUID token transfers (target: ${limit === 0 ? 'all' : limit})...`);
+      console.log(`[getTransferTransactions] Found ${allSignatures.length} transactions from burn source, filtering for transfers to buyback of $LIQUID token (target: ${limit === 0 ? 'all' : limit})...`);
       
       for (const sigInfo of allSignatures) {
         if (EXCLUDED_TRANSACTIONS.includes(sigInfo.signature) || seenSignatures.has(sigInfo.signature)) {
