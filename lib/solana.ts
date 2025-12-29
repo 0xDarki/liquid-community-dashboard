@@ -1091,44 +1091,70 @@ export async function getTransferTransactions(limit: number = 50): Promise<Trans
   let buybackSkippedCount = 0;
   
   try {
-    // Chercher les transactions depuis le token mint (plus efficace que depuis le buyback wallet)
-    // Cela filtre automatiquement pour ne récupérer que les transactions impliquant ce token
+    // Chercher les transactions depuis le buyback address (beaucoup moins de transactions à traiter)
+    // On filtre ensuite pour ne garder que celles qui impliquent le token mint
     try {
-      const tokenMintPublicKey = new PublicKey(TOKEN_MINT_ADDRESS);
-      // Récupérer beaucoup plus de transactions car on va filtrer (ratio ~10:1 ou plus)
-      // Si limit=1000, on récupère jusqu'à 5000 transactions du token pour trouver les transfers
-      const tokenLimit = limit === 0 ? 10000 : Math.max(limit * 10, 5000); // Récupérer 10x plus ou minimum 5000
+      const buybackPublicKey = new PublicKey(BUYBACK_ADDRESS);
+      // Récupérer toutes les transactions du buyback (il n'y en a que ~17 qui concernent le token)
+      const buybackLimit = limit === 0 ? 1000 : Math.max(limit * 50, 1000); // Limite élevée car on va filtrer
       await delay(MIN_REQUEST_DELAY); // Délai avant la première requête
       
       // Pagination pour récupérer toutes les transactions si nécessaire
       let before: string | undefined = undefined;
       let pageCount = 0;
-      const maxPages = Math.ceil(tokenLimit / 1000); // Maximum de pages nécessaires
+      const maxPages = limit === 0 ? 10 : Math.ceil(buybackLimit / 1000); // Maximum 10 pages pour getAll
+      let consecutive429Errors = 0;
+      const max429Errors = 5; // Arrêter après 5 erreurs 429 consécutives
       
-      while (pageCount < maxPages && allSignatures.length < tokenLimit) {
-        const pageLimit = Math.min(1000, tokenLimit - allSignatures.length);
-        const tokenSignatures = await connection.getSignaturesForAddress(tokenMintPublicKey, { 
-          limit: pageLimit,
-          before: before 
-        });
+      while (pageCount < maxPages && allSignatures.length < buybackLimit) {
+        // Si trop d'erreurs 429, augmenter drastiquement le délai
+        if (consecutive429Errors > 0) {
+          const backoffDelay = Math.min(consecutive429Errors * 5000, 30000); // Max 30 secondes
+          console.log(`[getTransferTransactions] Backing off after 429 errors, waiting ${backoffDelay}ms...`);
+          await delay(backoffDelay);
+        }
         
-        if (tokenSignatures.length === 0) break;
+        const pageLimit = Math.min(1000, buybackLimit - allSignatures.length);
         
-        allSignatures = allSignatures.concat(tokenSignatures);
-        before = tokenSignatures[tokenSignatures.length - 1].signature;
-        pageCount++;
-        
-        if (tokenSignatures.length < pageLimit) break; // Plus de transactions disponibles
-        if (pageCount > 0) await delay(MIN_REQUEST_DELAY); // Délai entre les pages
-        
-        // Si on a déjà trouvé assez de transfers et qu'on a une limite, on peut arrêter de récupérer
-        // Mais seulement si limit > 0 (si limit=0, on veut tout récupérer)
-        if (limit > 0 && transactions.length >= limit) {
-          break;
+        try {
+          const buybackSignatures = await connection.getSignaturesForAddress(buybackPublicKey, { 
+            limit: pageLimit,
+            before: before 
+          });
+          
+          consecutive429Errors = 0; // Réinitialiser le compteur en cas de succès
+          
+          if (buybackSignatures.length === 0) break;
+          
+          allSignatures = allSignatures.concat(buybackSignatures);
+          before = buybackSignatures[buybackSignatures.length - 1].signature;
+          pageCount++;
+          
+          if (buybackSignatures.length < pageLimit) break; // Plus de transactions disponibles
+          
+          // Délai entre les pages
+          await delay(MIN_REQUEST_DELAY);
+          
+          // Si on a déjà trouvé assez de transfers et qu'on a une limite, on peut arrêter de récupérer
+          if (limit > 0 && transactions.length >= limit) {
+            break;
+          }
+        } catch (error: any) {
+          const errorMessage = error?.message || '';
+          if (errorMessage.includes('429') || errorMessage.includes('Too Many Requests')) {
+            consecutive429Errors++;
+            if (consecutive429Errors >= max429Errors) {
+              console.warn(`[getTransferTransactions] Too many 429 errors (${consecutive429Errors}), stopping and returning what we have`);
+              break;
+            }
+            // Le retry sera géré par le backoff au début de la boucle
+            continue;
+          }
+          throw error; // Re-throw les autres erreurs
         }
       }
       
-      console.log(`[getTransferTransactions] Found ${allSignatures.length} token transactions, filtering for buyback transfers (target: ${limit === 0 ? 'all' : limit})...`);
+      console.log(`[getTransferTransactions] Found ${allSignatures.length} buyback transactions, filtering for $LIQUID token transfers (target: ${limit === 0 ? 'all' : limit})...`);
       
       for (const sigInfo of allSignatures) {
         if (EXCLUDED_TRANSACTIONS.includes(sigInfo.signature) || seenSignatures.has(sigInfo.signature)) {
@@ -1141,9 +1167,19 @@ export async function getTransferTransactions(limit: number = 50): Promise<Trans
           break;
         }
         
-        // Ajouter un délai entre chaque transaction
+        // Ajouter un délai entre chaque transaction (plus long pour getAll)
         if (processedCount > 0) {
-          await delay(MIN_REQUEST_DELAY); // Délai pour respecter la limite de 10 req/s
+          const requestDelay = limit === 0 ? MIN_REQUEST_DELAY * 2 : MIN_REQUEST_DELAY;
+          await delay(requestDelay); // Délai pour respecter la limite de 10 req/s
+        }
+        
+        // Si trop d'erreurs 429 consécutives dans le parsing, arrêter
+        if (consecutiveErrors >= maxConsecutiveErrors && consecutiveErrors > 0) {
+          const lastError = (consecutiveErrors as any).lastError;
+          if (lastError?.includes('429')) {
+            console.warn(`[getTransferTransactions] Too many 429 errors while parsing (${consecutiveErrors}), stopping and returning what we have`);
+            break;
+          }
         }
         
         try {
@@ -1174,18 +1210,22 @@ export async function getTransferTransactions(limit: number = 50): Promise<Trans
               continue;
             }
             
-            // Filtrer rapidement : vérifier si le buyback est impliqué dans la transaction
-            // Vérifier dans postTokenBalances OU dans les accountKeys
-            const hasBuybackInBalances = tx.meta?.postTokenBalances?.some(
-              (b: any) => b.owner === BUYBACK_ADDRESS && b.mint === TOKEN_MINT_ADDRESS
-            );
+            // Filtrer rapidement : vérifier si le token $LIQUID est dans la transaction
+            // Si pas de token mint, skip immédiatement (économise le parsing)
             const accountKeys = tx.transaction.message.accountKeys.map((key: any) => 
               typeof key === 'string' ? key : key.pubkey.toString()
             );
-            const hasBuybackInAccounts = accountKeys.includes(BUYBACK_ADDRESS);
+            const hasTokenMint = accountKeys.includes(TOKEN_MINT_ADDRESS);
             
-            // Si pas de buyback dans la transaction, skip immédiatement (économise le parsing)
-            if (!hasBuybackInBalances && !hasBuybackInAccounts) {
+            // Vérifier aussi dans les token balances
+            const hasTokenInBalances = tx.meta?.postTokenBalances?.some(
+              (b: any) => b.mint === TOKEN_MINT_ADDRESS
+            ) || tx.meta?.preTokenBalances?.some(
+              (b: any) => b.mint === TOKEN_MINT_ADDRESS
+            );
+            
+            // Si pas de token $LIQUID dans la transaction, skip immédiatement
+            if (!hasTokenMint && !hasTokenInBalances) {
               processedCount++;
               consecutiveErrors = 0;
               continue;
@@ -1231,13 +1271,19 @@ export async function getTransferTransactions(limit: number = 50): Promise<Trans
             continue;
           }
           
-          // Si erreur 429, attendre plus longtemps et réduire la vitesse
+          // Si erreur 429, utiliser un backoff exponentiel et arrêter après trop d'erreurs
           if (errorMessage.includes('429') || errorMessage.includes('Too Many Requests')) {
-            console.log(`[getTransferTransactions] Rate limited (429), waiting 10 seconds before retry...`);
-            await delay(10000); // Délai de 10 secondes pour les erreurs 429
-            // Réduire la vitesse après une erreur 429
-            await delay(MIN_REQUEST_DELAY * 3); // Triple délai après 429
-            continue;
+            consecutiveErrors++;
+            const backoffDelay = Math.min(consecutiveErrors * 10000, 60000); // Backoff exponentiel, max 60s
+            console.log(`[getTransferTransactions] Rate limited (429), error ${consecutiveErrors}/${maxConsecutiveErrors}, waiting ${backoffDelay}ms...`);
+            
+            if (consecutiveErrors >= maxConsecutiveErrors) {
+              console.warn(`[getTransferTransactions] Too many 429 errors (${consecutiveErrors}), stopping and returning what we have`);
+              break; // Arrêter complètement après trop d'erreurs 429
+            }
+            
+            await delay(backoffDelay);
+            continue; // Réessayer cette transaction après le backoff
           }
           
           // Si erreur 503, attendre plus longtemps
