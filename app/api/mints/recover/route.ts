@@ -69,8 +69,9 @@ export async function POST(request: Request) {
       let before: string | undefined = undefined;
       let pageCount = 0;
       const maxPages = 50; // 50 pages de 1000 = 50,000 signatures max
-      const signaturesPerPage = 1000; // Revenir à 1000 comme avant
+      let signaturesPerPage = 1000; // Commencer avec 1000 comme avant
       let hasMore = true;
+      let jsonErrorCount = 0; // Compter les erreurs JSON consécutives
       
       // Fonction helper pour delay
       const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
@@ -87,12 +88,33 @@ export async function POST(request: Request) {
           let retries = 0;
           const maxRetries = 3;
           
+          // Si on a eu plusieurs erreurs JSON, réduire la taille de page
+          let currentLimit = signaturesPerPage;
+          if (jsonErrorCount >= 2) {
+            // Réduire progressivement : 1000 -> 500 -> 250 -> 100
+            currentLimit = Math.max(100, Math.floor(1000 / Math.pow(2, Math.min(jsonErrorCount - 1, 3))));
+            if (currentLimit < signaturesPerPage) {
+              console.log(`[Recover] Using reduced limit of ${currentLimit} due to ${jsonErrorCount} JSON errors`);
+            }
+          }
+          
           while (retries < maxRetries) {
             try {
               signatures = await connection.getSignaturesForAddress(publicKey, {
-                limit: signaturesPerPage,
+                limit: currentLimit,
                 before: before,
               });
+              
+              // Succès, réinitialiser le compteur d'erreurs JSON
+              if (jsonErrorCount > 0) {
+                console.log(`[Recover] Successfully fetched page after ${jsonErrorCount} JSON errors`);
+                jsonErrorCount = 0;
+                // Si on a réussi avec une limite réduite, continuer avec cette limite
+                if (currentLimit < signaturesPerPage) {
+                  signaturesPerPage = currentLimit;
+                  console.log(`[Recover] Continuing with reduced limit of ${signaturesPerPage} for future pages`);
+                }
+              }
               break; // Succès, sortir de la boucle
             } catch (retryError: any) {
               const retryErrorMessage = retryError?.message || '';
@@ -115,6 +137,11 @@ export async function POST(request: Request) {
                 console.warn(`[Recover] Error fetching signatures page ${pageCount + 1} (attempt ${retries}/${maxRetries}): ${retryErrorMessage.substring(0, 100)}. Retrying in ${waitTime}ms...`);
                 await delay(waitTime);
                 continue;
+              }
+              
+              // Si c'est une erreur JSON et qu'on a épuisé les retries, incrémenter le compteur
+              if (isJsonError) {
+                jsonErrorCount++;
               }
               
               // Si ce n'est pas une erreur temporaire ou qu'on a épuisé les retries, throw
@@ -294,12 +321,18 @@ export async function POST(request: Request) {
           
           // Si erreur JSON ou temporaire (500, 503), retenter avec un délai
           if (isJsonError || isTemporaryError || errorMessage.includes('429') || errorMessage.includes('Rate limit')) {
+            if (isJsonError) {
+              jsonErrorCount++;
+            }
+            
             const waitTime = isJsonError ? 10000 : 10000; // 10 secondes pour les erreurs JSON ou temporaires
-            console.warn(`[Recover] ${isJsonError ? 'JSON parsing error' : 'Temporary error'} on page ${pageCount + 1}, waiting ${waitTime}ms before retrying...`);
+            console.warn(`[Recover] ${isJsonError ? 'JSON parsing error' : 'Temporary error'} on page ${pageCount + 1}${isJsonError ? ` (JSON error count: ${jsonErrorCount})` : ''}, waiting ${waitTime}ms before retrying...`);
             await delay(waitTime);
             
-            // Réessayer cette page
-            pageCount--; // Décrémenter pour réessayer la même page
+            // Réessayer cette page (mais ne pas décrémenter pageCount si c'est déjà 0)
+            if (pageCount > 0) {
+              pageCount--; // Décrémenter pour réessayer la même page
+            }
             continue;
           }
           
