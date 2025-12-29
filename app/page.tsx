@@ -377,7 +377,12 @@ export default function Dashboard() {
                     onClick={async () => {
                       setSyncing(true);
                       try {
-                        const res = await fetch('/api/mints/sync?limit=60');
+                        // Synchroniser les mints et les transfers en parallèle
+                        const [mintsRes, transfersRes] = await Promise.all([
+                          fetch('/api/mints/sync?limit=60'),
+                          fetch('/api/transfers/sync?limit=1000').catch(() => null), // Ignorer les erreurs pour les transfers
+                        ]);
+                        const res = mintsRes;
                         const data = await res.json();
                         if (res.ok && data.success) {
                           // Le sync state est maintenant mis à jour côté serveur
@@ -441,10 +446,17 @@ export default function Dashboard() {
                       }
                       setRecovering(true);
                       try {
-                        const res = await fetch('/api/mints/recover', { method: 'POST' });
+                        // Récupérer les mints et synchroniser les transfers en parallèle
+                        const [mintsRes, transfersRes] = await Promise.all([
+                          fetch('/api/mints/recover', { method: 'POST' }),
+                          fetch('/api/transfers/sync?getAll=true').catch(() => null), // Ignorer les erreurs pour les transfers
+                        ]);
+                        const res = mintsRes;
                         const data = await res.json();
                         if (res.ok && data.success) {
-                          alert(`Recovery successful: ${data.added} transactions recovered. Total: ${data.total}. ${data.message || ''}`);
+                          const transfersData = transfersRes ? await transfersRes.json().catch(() => null) : null;
+                          const transfersMsg = transfersData?.success ? ` Transfers: ${transfersData.added} new, ${transfersData.total} total.` : '';
+                          alert(`Recovery successful: ${data.added} transactions recovered. Total: ${data.total}. ${data.message || ''}${transfersMsg}`);
                           // Attendre un peu pour que le sync state soit bien sauvegardé
                           await new Promise(resolve => setTimeout(resolve, 500));
                           // Rafraîchir toutes les données pour qu'elles soient à jour

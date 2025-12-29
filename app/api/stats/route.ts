@@ -75,16 +75,16 @@ export async function GET() {
       getTokenSupply(TOKEN_MINT_ADDRESS),
     ]);
     
-    // Récupérer TOUTES les transactions de transfert vers le buyback pour calculer le total
-    // Utiliser une limite élevée pour récupérer toutes les transactions
-    const { getTransferTransactions } = await import('@/lib/solana');
+    // Récupérer les transactions de transfert depuis le stockage (pas d'appel RPC)
+    const { loadStoredTransfers } = await import('@/lib/storage');
     let transferTxs: TransferTransaction[] = [];
     try {
-      // Récupérer toutes les transactions de transfert (limite élevée pour avoir le total complet)
-      transferTxs = await getTransferTransactions(1000); // Augmenter la limite pour récupérer plus de transactions
+      // Charger les transfers stockés (pas d'appel RPC, utilise Supabase ou fichiers locaux)
+      transferTxs = await loadStoredTransfers();
+      console.log(`[Stats API] Loaded ${transferTxs.length} transfer transactions from storage`);
     } catch (error) {
-      console.error('[Stats API] Error fetching transfer transactions:', error);
-      // Continuer même si on ne peut pas récupérer les transfers
+      console.error('[Stats API] Error loading transfer transactions from storage:', error);
+      // Continuer même si on ne peut pas charger les transfers
     }
     
     // Calculer le total des tokens transférés vers le buyback

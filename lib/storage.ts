@@ -1,10 +1,11 @@
 import { promises as fs } from 'fs';
 import path from 'path';
-import type { MintTransaction } from './solana';
+import type { MintTransaction, TransferTransaction } from './solana';
 import { createClient } from '@supabase/supabase-js';
 
 const STORAGE_DIR = path.join(process.cwd(), 'data');
 const MINTS_FILE = path.join(STORAGE_DIR, 'mints.json');
+const TRANSFERS_FILE = path.join(STORAGE_DIR, 'transfers.json');
 const SYNC_STATE_FILE = path.join(STORAGE_DIR, 'sync-state.json');
 
 // Interface pour l'état de synchronisation
@@ -132,6 +133,75 @@ async function saveMintsToSupabase(mints: MintTransaction[]): Promise<void> {
       throw new Error('Supabase table "mints" does not exist. Please run the SQL schema from supabase-schema.sql in your Supabase SQL Editor.');
     }
     console.error('Error saving mints to Supabase:', error);
+    throw error;
+  }
+}
+
+// Charger les transfers depuis Supabase
+async function loadTransfersFromSupabase(): Promise<TransferTransaction[]> {
+  try {
+    const supabase = getSupabaseClient();
+    const { data, error } = await supabase
+      .from('transfers')
+      .select('data')
+      .eq('key', 'transfers')
+      .single();
+
+    if (error) {
+      if (error.code === 'PGRST116') {
+        // No rows returned
+        console.log('[loadTransfersFromSupabase] No data found, returning empty array');
+        return [];
+      }
+      if (error.code === 'PGRST205') {
+        // Table not found
+        console.error('[loadTransfersFromSupabase] Table "transfers" does not exist. Please run the SQL schema from supabase-schema.sql in your Supabase SQL Editor.');
+        return [];
+      }
+      throw error;
+    }
+
+    return data?.data || [];
+  } catch (error: any) {
+    if (error?.code === 'PGRST205') {
+      console.error('[loadTransfersFromSupabase] Table "transfers" does not exist. Please run the SQL schema from supabase-schema.sql in your Supabase SQL Editor.');
+      return [];
+    }
+    console.error('Error loading transfers from Supabase:', error);
+    return [];
+  }
+}
+
+// Sauvegarder les transfers dans Supabase
+async function saveTransfersToSupabase(transfers: TransferTransaction[]): Promise<void> {
+  try {
+    const sorted = transfers.sort((a, b) => b.timestamp - a.timestamp);
+    const supabase = getSupabaseClient();
+    
+    const { error } = await supabase
+      .from('transfers')
+      .upsert({
+        key: 'transfers',
+        data: sorted,
+      }, {
+        onConflict: 'key',
+      });
+
+    if (error) {
+      if (error.code === 'PGRST205') {
+        console.error('[saveTransfersToSupabase] Table "transfers" does not exist. Please run the SQL schema from supabase-schema.sql in your Supabase SQL Editor.');
+        throw new Error('Supabase table "transfers" does not exist. Please run the SQL schema from supabase-schema.sql in your Supabase SQL Editor.');
+      }
+      throw error;
+    }
+
+    console.log(`[saveTransfersToSupabase] Successfully saved ${transfers.length} transactions`);
+  } catch (error: any) {
+    if (error?.code === 'PGRST205') {
+      console.error('[saveTransfersToSupabase] Table "transfers" does not exist. Please run the SQL schema from supabase-schema.sql in your Supabase SQL Editor.');
+      throw new Error('Supabase table "transfers" does not exist. Please run the SQL schema from supabase-schema.sql in your Supabase SQL Editor.');
+    }
+    console.error('Error saving transfers to Supabase:', error);
     throw error;
   }
 }
@@ -420,6 +490,34 @@ async function saveMintsToFile(mints: MintTransaction[]): Promise<void> {
   }
 }
 
+// Charger les transfers depuis le fichier local
+async function loadTransfersFromFile(): Promise<TransferTransaction[]> {
+  try {
+    await ensureDataDir();
+    const data = await fs.readFile(TRANSFERS_FILE, 'utf-8');
+    return JSON.parse(data);
+  } catch (error: any) {
+    if (error.code === 'ENOENT') {
+      return [];
+    }
+    console.error('Error loading stored transfers:', error);
+    return [];
+  }
+}
+
+// Sauvegarder les transfers dans le fichier local
+async function saveTransfersToFile(transfers: TransferTransaction[]): Promise<void> {
+  try {
+    await ensureDataDir();
+    const sorted = transfers.sort((a, b) => b.timestamp - a.timestamp);
+    await fs.writeFile(TRANSFERS_FILE, JSON.stringify(sorted, null, 2), 'utf-8');
+    console.log(`[saveTransfersToFile] Successfully wrote ${transfers.length} transactions to file`);
+  } catch (error) {
+    console.error('Error saving stored transfers:', error);
+    throw error;
+  }
+}
+
 // Charger l'état de synchronisation depuis le fichier local
 async function loadSyncStateFromFile(): Promise<SyncState> {
   try {
@@ -536,6 +634,23 @@ export async function saveStoredMints(mints: MintTransaction[]): Promise<void> {
     await saveMintsToSupabase(mints);
   } else {
     await saveMintsToFile(mints);
+  }
+}
+
+// Charger les transfers depuis le stockage (Supabase ou File)
+export async function loadStoredTransfers(): Promise<TransferTransaction[]> {
+  if (useSupabase()) {
+    return loadTransfersFromSupabase();
+  }
+  return loadTransfersFromFile();
+}
+
+// Sauvegarder les transfers dans le stockage (Supabase ou File)
+export async function saveStoredTransfers(transfers: TransferTransaction[]): Promise<void> {
+  if (useSupabase()) {
+    await saveTransfersToSupabase(transfers);
+  } else {
+    await saveTransfersToFile(transfers);
   }
 }
 
@@ -939,6 +1054,50 @@ export async function syncMints(limit: number = 50, getAll: boolean = false): Pr
     console.error('Error syncing mints:', error);
     // En cas d'erreur, retourner au moins ce qui est stocké
     const existing = await loadStoredMints();
+    return { added: 0, total: existing.length };
+  }
+}
+
+// Synchroniser les transfers : récupère les nouveaux depuis la blockchain et les ajoute au stockage
+export async function syncTransfers(limit: number = 1000, getAll: boolean = false): Promise<{ added: number; total: number }> {
+  try {
+    // Charger d'abord les transactions existantes pour utiliser le cache
+    const existingTransfers = await loadStoredTransfers();
+    const existingSignatures = new Set(existingTransfers.map(t => t.signature));
+    
+    console.log(`[syncTransfers] Starting sync with limit=${limit}, getAll=${getAll}`);
+    console.log(`[syncTransfers] Already have ${existingTransfers.length} stored transactions (using as cache)`);
+    console.log(`[syncTransfers] Storage mode: ${useSupabase() ? 'Supabase' : 'Local filesystem'}`);
+    
+    // Utiliser la limite fournie, avec un maximum pour éviter les timeouts
+    const syncLimit = getAll ? 10000 : Math.min(limit, 1000);
+    
+    const { getTransferTransactions } = await import('./solana');
+    
+    // Récupérer les transfers depuis la blockchain
+    const allTransfers = await getTransferTransactions(syncLimit);
+    
+    // Filtrer seulement les nouvelles transactions
+    const newTransfers = allTransfers.filter(t => !existingSignatures.has(t.signature));
+    
+    console.log(`[syncTransfers] Retrieved ${allTransfers.length} transactions from blockchain, ${newTransfers.length} are new`);
+    
+    if (newTransfers.length > 0) {
+      // Fusionner avec les transactions existantes
+      const updated = [...existingTransfers, ...newTransfers].sort((a, b) => b.timestamp - a.timestamp);
+      console.log(`[syncTransfers] Saving ${updated.length} total transactions...`);
+      await saveStoredTransfers(updated);
+      console.log(`[syncTransfers] Successfully saved ${updated.length} transactions`);
+    } else {
+      console.log(`[syncTransfers] No new transactions to add`);
+    }
+    
+    const total = existingTransfers.length + newTransfers.length;
+    return { added: newTransfers.length, total };
+  } catch (error) {
+    console.error('Error syncing transfers:', error);
+    // En cas d'erreur, retourner au moins ce qui est stocké
+    const existing = await loadStoredTransfers();
     return { added: 0, total: existing.length };
   }
 }
