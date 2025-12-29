@@ -1091,11 +1091,34 @@ export async function getTransferTransactions(limit: number = 50): Promise<Trans
     // Chercher les transactions qui impliquent le buyback address
     try {
       const buybackPublicKey = new PublicKey(BUYBACK_ADDRESS);
-      const buybackLimit = Math.min(limit, 10); // Réduit à 10
+      // Utiliser la limite fournie, mais avec un maximum raisonnable pour éviter les timeouts
+      const buybackLimit = Math.min(limit, 1000); // Maximum 1000 transactions par page
       await delay(MIN_REQUEST_DELAY); // Délai avant la première requête
-      const buybackSignatures = await connection.getSignaturesForAddress(buybackPublicKey, { limit: buybackLimit });
       
-      for (const sigInfo of buybackSignatures) {
+      // Pagination pour récupérer toutes les transactions si nécessaire
+      let before: string | undefined = undefined;
+      let allSignatures: any[] = [];
+      let pageCount = 0;
+      const maxPages = Math.ceil(limit / 1000); // Maximum de pages nécessaires
+      
+      while (pageCount < maxPages && allSignatures.length < limit) {
+        const pageLimit = Math.min(1000, limit - allSignatures.length);
+        const buybackSignatures = await connection.getSignaturesForAddress(buybackPublicKey, { 
+          limit: pageLimit,
+          before: before 
+        });
+        
+        if (buybackSignatures.length === 0) break;
+        
+        allSignatures = allSignatures.concat(buybackSignatures);
+        before = buybackSignatures[buybackSignatures.length - 1].signature;
+        pageCount++;
+        
+        if (buybackSignatures.length < pageLimit) break; // Plus de transactions disponibles
+        if (pageCount > 0) await delay(MIN_REQUEST_DELAY); // Délai entre les pages
+      }
+      
+      for (const sigInfo of allSignatures) {
         if (EXCLUDED_TRANSACTIONS.includes(sigInfo.signature) || seenSignatures.has(sigInfo.signature)) {
           continue;
         }

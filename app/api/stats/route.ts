@@ -68,31 +68,37 @@ export async function GET() {
     const totalTokensAdded = storedMints.reduce((sum, tx) => sum + tx.tokenAmount, 0);
     
     // Récupérer les balances actuelles et la supply du token
-    const { getSolBalance, getTokenBalance, getTokenSupply, LP_POOL_ADDRESS, TOKEN_MINT_ADDRESS, BUYBACK_ADDRESS } = await import('@/lib/solana');
-    const [solBalance, tokenBalance, tokenSupply, buybackTokenBalance] = await Promise.all([
+    const { getSolBalance, getTokenBalance, getTokenSupply, LP_POOL_ADDRESS, TOKEN_MINT_ADDRESS } = await import('@/lib/solana');
+    const [solBalance, tokenBalance, tokenSupply] = await Promise.all([
       getSolBalance(LP_POOL_ADDRESS),
       getTokenBalance(LP_POOL_ADDRESS, TOKEN_MINT_ADDRESS),
       getTokenSupply(TOKEN_MINT_ADDRESS),
-      getTokenBalance(BUYBACK_ADDRESS, TOKEN_MINT_ADDRESS),
     ]);
     
-    // Calculer le burn : supply initiale (1,000,000,000) - supply actuelle - tokens dans le wallet buyback
-    const INITIAL_SUPPLY = 1000000000; // 1 milliard
-    // Calculer le burn même si tokenSupply est 0 (peut arriver en cas d'erreur, mais on affichera quand même une valeur)
-    const tokenBurned = tokenSupply >= 0 
-      ? INITIAL_SUPPLY - tokenSupply - (buybackTokenBalance || 0)
-      : null;
-    
-    // Récupérer les transfers (limité pour éviter trop de requêtes)
+    // Récupérer TOUTES les transactions de transfert vers le buyback pour calculer le total
+    // Utiliser une limite élevée pour récupérer toutes les transactions
     const { getTransferTransactions } = await import('@/lib/solana');
     let transferTxs: TransferTransaction[] = [];
     try {
-      transferTxs = await getTransferTransactions(100);
+      // Récupérer toutes les transactions de transfert (limite élevée pour avoir le total complet)
+      transferTxs = await getTransferTransactions(1000); // Augmenter la limite pour récupérer plus de transactions
     } catch (error) {
-      // Ignorer les erreurs pour les transfers
+      console.error('[Stats API] Error fetching transfer transactions:', error);
+      // Continuer même si on ne peut pas récupérer les transfers
     }
     
+    // Calculer le total des tokens transférés vers le buyback
     const totalTokensTransferred = transferTxs.reduce((sum, tx) => sum + tx.tokenAmount, 0);
+    
+    // Calculer le burn : supply initiale (1,000,000,000) - supply actuelle - tokens transférés vers le buyback
+    const INITIAL_SUPPLY = 1000000000; // 1 milliard
+    // Utiliser la somme des transactions de transfert au lieu de getTokenBalance
+    // car getTokenBalance peut échouer ou ne pas être fiable
+    const tokenBurned = tokenSupply >= 0 
+      ? INITIAL_SUPPLY - tokenSupply - totalTokensTransferred
+      : null;
+    
+    console.log(`[Stats API] Burn calculation: ${INITIAL_SUPPLY} (initial) - ${tokenSupply} (current supply) - ${totalTokensTransferred} (tokens in buyback) = ${tokenBurned}`);
     
     // Calculer la liquidité totale : (Total SOL Added × prix SOL) + (Total Tokens Added × prix token)
     let totalLiquidity: number | null = null;
