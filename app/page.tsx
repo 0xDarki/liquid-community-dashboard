@@ -592,14 +592,16 @@ export default function Dashboard() {
               />
               <StatsCard
                 title="$LIQUID Supply Burn"
-                value={stats.totalTokensTransferred != null && stats.totalTokensTransferred > 0 
-                  ? stats.totalTokensTransferred.toLocaleString('en-US', {
+                value={stats.tokenBurned != null && stats.tokenBurned > 0 
+                  ? stats.tokenBurned.toLocaleString('en-US', {
                       maximumFractionDigits: 2,
                     })
-                  : '0'}
-                subtitle={stats.totalTokensTransferred != null && stats.totalTokensTransferred > 0 && stats.totalTokensAdded > 0
-                  ? `${((stats.totalTokensTransferred / stats.totalTokensAdded) * 100).toFixed(2)}% of total added`
-                  : stats.totalTokensTransferred != null && stats.totalTokensTransferred === 0
+                  : stats.tokenBurned === 0
+                    ? '0'
+                    : 'Loading...'}
+                subtitle={stats.tokenBurned != null && stats.tokenBurned > 0 && stats.tokenSupply != null
+                  ? `${stats.tokenSupply.toLocaleString('en-US', { maximumFractionDigits: 2 })} / 1,000,000,000 supply`
+                  : stats.tokenBurned === 0
                     ? 'No burns yet'
                     : 'Calculating...'}
                 color="red"

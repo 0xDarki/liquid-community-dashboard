@@ -56,6 +56,8 @@ export interface PoolStats {
   totalSolAdded: number;
   totalTokensAdded: number;
   totalTokensTransferred: number;
+  tokenSupply?: number | null; // Supply actuelle du token
+  tokenBurned?: number | null; // Tokens brûlés (1,000,000,000 - supply actuelle)
   tokenPrice?: number | null;
   tokenPriceInUsd?: number | null;
   solPrice?: number | null;
