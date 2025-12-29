@@ -1100,49 +1100,50 @@ export async function getTransferTransactions(limit: number = 50): Promise<Trans
   let buybackSkippedCount = 0;
   
   try {
-    // Recherche ciblée : chercher depuis le token mint et filtrer strictement pour ne garder
-    // QUE les transactions qui impliquent à la fois BURN_SOURCE_ADDRESS et BUYBACK_ADDRESS
-    // C'est la méthode la plus efficace car on filtre dès la récupération des signatures
+    // Méthode recommandée par Solana Stack Overflow : chercher depuis l'adresse source (BURN_SOURCE_ADDRESS)
+    // puis analyser preTokenBalances/postTokenBalances pour détecter les transfers vers BUYBACK_ADDRESS
+    // Référence: https://solana.stackexchange.com/questions/9921/display-all-sol-transfers-from-one-address-to-another-both-addresses-are-specif
     try {
-      const tokenMintPublicKey = new PublicKey(TOKEN_MINT_ADDRESS);
-      // Limite très réduite car on filtre précisément : seulement les transfers depuis BURN_SOURCE_ADDRESS vers BUYBACK_ADDRESS
-      // Il n'y a que ~17 transactions de burn, donc on peut limiter drastiquement
-      const tokenLimit = limit === 0 ? 100 : Math.max(limit * 15, 100); // Limite très réduite
+      const burnSourcePublicKey = new PublicKey(BURN_SOURCE_ADDRESS);
+      // Limite réduite car les burns sont probablement récents et il n'y en a que ~17
+      // On cherche depuis la source, donc on limite à ~300 transactions récentes maximum
+      const sourceLimit = limit === 0 ? 300 : Math.max(limit * 20, 300); // Limite raisonnable pour trouver les ~17 burns
       const initialDelay = limit === 0 ? MIN_REQUEST_DELAY * 10 : MIN_REQUEST_DELAY * 2;
       await delay(initialDelay);
       
       // Pagination pour récupérer les transactions si nécessaire
       let before: string | undefined = undefined;
       let pageCount = 0;
-      const maxPages = limit === 0 ? 2 : Math.ceil(tokenLimit / 1000); // Maximum 2 pages pour getAll
+      const maxPages = limit === 0 ? 1 : Math.ceil(sourceLimit / 1000); // Maximum 1 page pour getAll (300 tx max)
       let consecutive429Errors = 0;
       const max429Errors = 3;
       let foundBurnCount = 0; // Compter les burns trouvés pour arrêter tôt
       
-      while (pageCount < maxPages && allSignatures.length < tokenLimit) {
+      while (pageCount < maxPages && allSignatures.length < sourceLimit) {
         if (consecutive429Errors > 0) {
           const backoffDelay = Math.min(consecutive429Errors * 10000, 60000);
           console.log(`[getTransferTransactions] Backing off after 429 errors, waiting ${backoffDelay}ms...`);
           await delay(backoffDelay);
         }
         
-        const pageLimit = Math.min(1000, tokenLimit - allSignatures.length);
+        const pageLimit = Math.min(1000, sourceLimit - allSignatures.length);
         
         try {
-          const tokenSignatures = await connection.getSignaturesForAddress(tokenMintPublicKey, { 
+          // Récupérer les signatures depuis BURN_SOURCE_ADDRESS (méthode recommandée)
+          const sourceSignatures = await connection.getSignaturesForAddress(burnSourcePublicKey, { 
             limit: pageLimit,
             before: before 
           });
           
           consecutive429Errors = 0;
           
-          if (tokenSignatures.length === 0) break;
+          if (sourceSignatures.length === 0) break;
           
-          allSignatures = allSignatures.concat(tokenSignatures);
-          before = tokenSignatures[tokenSignatures.length - 1].signature;
+          allSignatures = allSignatures.concat(sourceSignatures);
+          before = sourceSignatures[sourceSignatures.length - 1].signature;
           pageCount++;
           
-          if (tokenSignatures.length < pageLimit) break;
+          if (sourceSignatures.length < pageLimit) break;
           
           const pageDelay = limit === 0 ? MIN_REQUEST_DELAY * 10 : MIN_REQUEST_DELAY * 3;
           await delay(pageDelay);
@@ -1170,7 +1171,7 @@ export async function getTransferTransactions(limit: number = 50): Promise<Trans
         }
       }
       
-      console.log(`[getTransferTransactions] Found ${allSignatures.length} token transactions, filtering for transfers from ${BURN_SOURCE_ADDRESS.substring(0, 8)}... to ${BUYBACK_ADDRESS.substring(0, 8)}... of $LIQUID token (target: ${limit === 0 ? 'all' : limit})...`);
+      console.log(`[getTransferTransactions] Found ${allSignatures.length} transactions from ${BURN_SOURCE_ADDRESS.substring(0, 8)}..., filtering for transfers to ${BUYBACK_ADDRESS.substring(0, 8)}... of $LIQUID token (target: ${limit === 0 ? 'all' : limit})...`);
       
       for (const sigInfo of allSignatures) {
         if (EXCLUDED_TRANSACTIONS.includes(sigInfo.signature) || seenSignatures.has(sigInfo.signature)) {
@@ -1214,31 +1215,30 @@ export async function getTransferTransactions(limit: number = 50): Promise<Trans
               continue;
             }
             
-            // Filtrer très rapidement : vérifier si c'est un transfer depuis BURN_SOURCE_ADDRESS vers BUYBACK_ADDRESS du token $LIQUID
-            // On vérifie d'abord que les DEUX adresses sont présentes (filtre le plus restrictif) pour skip rapide
+            // Méthode recommandée par Solana Stack Overflow : analyser preTokenBalances/postTokenBalances
+            // pour détecter si BURN_SOURCE_ADDRESS a perdu des tokens et BUYBACK_ADDRESS en a gagné
+            // Référence: https://solana.stackexchange.com/questions/9921/display-all-sol-transfers-from-one-address-to-another-both-addresses-are-specif
             const accountKeys = tx.transaction.message.accountKeys.map((key: any) => 
               typeof key === 'string' ? key : key.pubkey.toString()
             );
             
-            // Vérifier EN PREMIER que la transaction implique À LA FOIS la source ET le buyback (skip rapide si l'un manque)
-            const hasBurnSource = accountKeys.includes(BURN_SOURCE_ADDRESS);
+            // Vérifier rapidement que la transaction implique le buyback (skip rapide si absent)
+            // On cherche depuis BURN_SOURCE_ADDRESS, donc cette adresse est toujours présente
             const hasBuyback = accountKeys.includes(BUYBACK_ADDRESS);
-            
-            if (!hasBurnSource || !hasBuyback) {
+            if (!hasBuyback) {
               processedCount++;
               consecutiveErrors = 0;
-              continue; // Skip immédiatement si pas les deux adresses (filtre le plus restrictif)
+              continue; // Skip immédiatement si pas de buyback (filtre le plus restrictif)
             }
             
-            // Le token mint est déjà vérifié car on cherche depuis TOKEN_MINT_ADDRESS
-            // Mais on vérifie quand même dans les balances pour être sûr
+            // Vérifier que la transaction implique le token $LIQUID dans les balances
             const hasTokenInBalances = tx.meta?.postTokenBalances?.some(
               (b: any) => b.mint === TOKEN_MINT_ADDRESS
             ) || tx.meta?.preTokenBalances?.some(
               (b: any) => b.mint === TOKEN_MINT_ADDRESS
             );
             
-            // Si pas de token $LIQUID dans les balances (normalement toujours présent), skip
+            // Si pas de token $LIQUID dans les balances, skip
             if (!hasTokenInBalances) {
               processedCount++;
               consecutiveErrors = 0;
