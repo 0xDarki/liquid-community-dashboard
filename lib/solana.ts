@@ -1081,28 +1081,31 @@ export async function getMintTransactions(limit: number = 50, existingSignatures
 
 // Fonction pour obtenir les transactions TRANSFER vers le buyback
 export async function getTransferTransactions(limit: number = 50): Promise<TransferTransaction[]> {
+  const transactions: TransferTransaction[] = [];
+  const seenSignatures = new Set<string>();
+  let processedCount = 0;
+  let consecutiveErrors = 0;
+  const maxConsecutiveErrors = 3;
+  let allSignatures: any[] = [];
+  let buybackFoundCount = 0;
+  let buybackSkippedCount = 0;
+  
   try {
-    const transactions: TransferTransaction[] = [];
-    const seenSignatures = new Set<string>();
-    let processedCount = 0;
-    let consecutiveErrors = 0;
-    const maxConsecutiveErrors = 3;
-    
     // Chercher les transactions depuis le token mint (plus efficace que depuis le buyback wallet)
     // Cela filtre automatiquement pour ne récupérer que les transactions impliquant ce token
     try {
       const tokenMintPublicKey = new PublicKey(TOKEN_MINT_ADDRESS);
-      // Utiliser la limite fournie, mais avec un maximum raisonnable pour éviter les timeouts
-      const tokenLimit = Math.min(limit * 3, 1000); // Récupérer 3x plus car on va filtrer
+      // Récupérer beaucoup plus de transactions car on va filtrer (ratio ~10:1 ou plus)
+      // Si limit=1000, on récupère jusqu'à 5000 transactions du token pour trouver les transfers
+      const tokenLimit = limit === 0 ? 10000 : Math.max(limit * 10, 5000); // Récupérer 10x plus ou minimum 5000
       await delay(MIN_REQUEST_DELAY); // Délai avant la première requête
       
       // Pagination pour récupérer toutes les transactions si nécessaire
       let before: string | undefined = undefined;
-      let allSignatures: any[] = [];
       let pageCount = 0;
-      const maxPages = Math.ceil((limit * 3) / 1000); // Maximum de pages nécessaires
+      const maxPages = Math.ceil(tokenLimit / 1000); // Maximum de pages nécessaires
       
-      while (pageCount < maxPages && transactions.length < limit) {
+      while (pageCount < maxPages && allSignatures.length < tokenLimit) {
         const pageLimit = Math.min(1000, tokenLimit - allSignatures.length);
         const tokenSignatures = await connection.getSignaturesForAddress(tokenMintPublicKey, { 
           limit: pageLimit,
@@ -1117,9 +1120,15 @@ export async function getTransferTransactions(limit: number = 50): Promise<Trans
         
         if (tokenSignatures.length < pageLimit) break; // Plus de transactions disponibles
         if (pageCount > 0) await delay(MIN_REQUEST_DELAY); // Délai entre les pages
+        
+        // Si on a déjà trouvé assez de transfers et qu'on a une limite, on peut arrêter de récupérer
+        // Mais seulement si limit > 0 (si limit=0, on veut tout récupérer)
+        if (limit > 0 && transactions.length >= limit) {
+          break;
+        }
       }
       
-      console.log(`[getTransferTransactions] Found ${allSignatures.length} token transactions, filtering for buyback transfers...`);
+      console.log(`[getTransferTransactions] Found ${allSignatures.length} token transactions, filtering for buyback transfers (target: ${limit === 0 ? 'all' : limit})...`);
       
       for (const sigInfo of allSignatures) {
         if (EXCLUDED_TRANSACTIONS.includes(sigInfo.signature) || seenSignatures.has(sigInfo.signature)) {
@@ -1165,27 +1174,38 @@ export async function getTransferTransactions(limit: number = 50): Promise<Trans
               continue;
             }
             
-            // Filtrer rapidement : vérifier si le buyback est dans les postTokenBalances avant de parser
-            const hasBuybackTransfer = tx.meta?.postTokenBalances?.some(
+            // Filtrer rapidement : vérifier si le buyback est impliqué dans la transaction
+            // Vérifier dans postTokenBalances OU dans les accountKeys
+            const hasBuybackInBalances = tx.meta?.postTokenBalances?.some(
               (b: any) => b.owner === BUYBACK_ADDRESS && b.mint === TOKEN_MINT_ADDRESS
             );
+            const accountKeys = tx.transaction.message.accountKeys.map((key: any) => 
+              typeof key === 'string' ? key : key.pubkey.toString()
+            );
+            const hasBuybackInAccounts = accountKeys.includes(BUYBACK_ADDRESS);
             
-            // Si pas de transfer vers le buyback, skip immédiatement (économise le parsing)
-            if (!hasBuybackTransfer) {
+            // Si pas de buyback dans la transaction, skip immédiatement (économise le parsing)
+            if (!hasBuybackInBalances && !hasBuybackInAccounts) {
               processedCount++;
               consecutiveErrors = 0;
               continue;
             }
             
+            buybackFoundCount++;
+            
+            // Parser la transaction pour vérifier si c'est vraiment un transfer vers le buyback
             const transferTx = parseTransferTransaction(tx);
-            if (transferTx && !EXCLUDED_TRANSACTIONS.includes(transferTx.signature)) {
+            if (transferTx && transferTx.tokenAmount > 0 && !EXCLUDED_TRANSACTIONS.includes(transferTx.signature)) {
               transactions.push(transferTx);
               seenSignatures.add(transferTx.signature);
               
-              // Arrêter si on a atteint la limite
-              if (transactions.length >= limit) {
+              // Arrêter si on a atteint la limite (sauf si limit=0 pour récupérer tout)
+              if (limit > 0 && transactions.length >= limit) {
+                console.log(`[getTransferTransactions] Reached limit of ${limit} transfers, stopping`);
                 break;
               }
+            } else {
+              buybackSkippedCount++;
             }
           }
           processedCount++;
@@ -1256,7 +1276,9 @@ export async function getTransferTransactions(limit: number = 50): Promise<Trans
     // Trier par timestamp décroissant
     transactions.sort((a, b) => b.timestamp - a.timestamp);
     
-    return transactions.slice(0, limit);
+    console.log(`[getTransferTransactions] Processed ${allSignatures.length} transactions, found ${buybackFoundCount} with buyback, ${transactions.length} valid transfers (${buybackSkippedCount} skipped)`);
+    
+    return limit === 0 ? transactions : transactions.slice(0, limit);
   } catch (error: any) {
     console.error('Error fetching transfer transactions:', error);
     if (error?.message?.includes('429') || error?.message?.includes('Too Many Requests') ||
