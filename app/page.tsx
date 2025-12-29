@@ -250,13 +250,13 @@ export default function Dashboard() {
   // Mettre à jour le compte à rebours pour le bouton Update en utilisant le sync state partagé
   useEffect(() => {
     let lastFetchTime = 0;
-    const FETCH_INTERVAL = 120000; // 2 minutes entre chaque fetch pour éviter trop de requêtes
+    const FETCH_INTERVAL = 30000; // 30 secondes entre chaque fetch
     
     const updateCountdown = async () => {
       const now = Date.now();
       // Éviter de faire trop de requêtes en même temps
       if (now - lastFetchTime < FETCH_INTERVAL) {
-        // Si moins de 10 secondes se sont écoulées, mettre à jour seulement le compte à rebours local
+        // Si moins de 30 secondes se sont écoulées, mettre à jour seulement le compte à rebours local
         if (lastSyncTime) {
           const timeElapsed = now - lastSyncTime.getTime();
           const twoMinutes = 2 * 60 * 1000;
@@ -315,8 +315,8 @@ export default function Dashboard() {
     };
 
     updateCountdown();
-    // Mettre à jour toutes les 5 secondes (mais ne fetch que toutes les 10 secondes)
-    const interval = setInterval(updateCountdown, 5000);
+    // Mettre à jour toutes les 30 secondes
+    const interval = setInterval(updateCountdown, 30000);
     return () => clearInterval(interval);
   }, [lastSyncTime]);
 

@@ -192,9 +192,41 @@ async function loadSyncStateFromSupabase(): Promise<SyncState> {
   }
 }
 
+// Throttling pour limiter les mises à jour de sync_state
+let lastSyncStateSave = 0;
+let lastSavedState: SyncState | null = null;
+const SYNC_STATE_SAVE_THROTTLE = 10000; // 10 secondes minimum entre chaque sauvegarde
+
 // Sauvegarder l'état de synchronisation dans Supabase
 async function saveSyncStateToSupabase(state: SyncState): Promise<void> {
   try {
+    const now = Date.now();
+    const timeSinceLastSave = now - lastSyncStateSave;
+    
+    // Vérifier si l'état a réellement changé
+    const hasStateChanged = !lastSavedState || 
+      lastSavedState.isSyncing !== state.isSyncing ||
+      lastSavedState.lastSync !== state.lastSync ||
+      lastSavedState.syncStartTime !== state.syncStartTime;
+    
+    // Si l'état n'a pas changé, ne pas sauvegarder
+    if (!hasStateChanged) {
+      return;
+    }
+    
+    // Si moins de 10 secondes se sont écoulées depuis la dernière sauvegarde, ignorer
+    // Sauf si c'est une mise à jour critique (fin de sync ou début de sync)
+    const isCriticalUpdate = state.isSyncing !== lastSavedState?.isSyncing || 
+                            (!state.isSyncing && state.lastSync > 0 && state.lastSync !== lastSavedState?.lastSync);
+    
+    if (timeSinceLastSave < SYNC_STATE_SAVE_THROTTLE && !isCriticalUpdate) {
+      // Sauvegarder seulement en mémoire pour les mises à jour non critiques
+      return;
+    }
+    
+    lastSyncStateSave = now;
+    lastSavedState = { ...state };
+    
     const supabase = getSupabaseClient();
     
     const { error } = await supabase
