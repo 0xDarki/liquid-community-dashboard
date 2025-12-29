@@ -78,7 +78,8 @@ export async function GET() {
     
     // Calculer le burn : supply initiale (1,000,000,000) - supply actuelle - tokens dans le wallet buyback
     const INITIAL_SUPPLY = 1000000000; // 1 milliard
-    const tokenBurned = tokenSupply > 0 
+    // Calculer le burn même si tokenSupply est 0 (peut arriver en cas d'erreur, mais on affichera quand même une valeur)
+    const tokenBurned = tokenSupply >= 0 
       ? INITIAL_SUPPLY - tokenSupply - (buybackTokenBalance || 0)
       : null;
     
@@ -112,7 +113,7 @@ export async function GET() {
       totalSolAdded,
       totalTokensAdded,
       totalTokensTransferred,
-      tokenSupply: tokenSupply > 0 ? tokenSupply : null,
+      tokenSupply: tokenSupply >= 0 ? tokenSupply : null,
       tokenBurned,
       tokenPrice: tokenPrice?.price ?? null,
       tokenPriceInUsd: tokenPrice?.priceInUsd ?? null,

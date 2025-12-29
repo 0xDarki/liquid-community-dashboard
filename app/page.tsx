@@ -130,10 +130,10 @@ export default function Dashboard() {
     setLoading(true);
     setError(null);
     try {
-      // Charger les mints, le sync state et les prix depuis la base de données
-      const [mintsRes, syncStateRes, priceRes] = await Promise.all([
+      // Charger les mints et les prix depuis la base de données
+      // Le sync state est géré séparément par le useEffect dédié toutes les 30 secondes
+      const [mintsRes, priceRes] = await Promise.all([
         fetch('/api/mints?limit=0'), // 0 = toutes les transactions stockées
-        fetch('/api/sync-state'), // Récupérer l'état de synchronisation partagé
         fetch('/api/price').catch(() => null), // Charger les prix depuis la base de données
       ]);
 
@@ -152,9 +152,8 @@ export default function Dashboard() {
         throw new Error(errorData.error || 'Failed to fetch data from API');
       }
 
-      const [mints, syncState, priceData] = await Promise.all([
+      const [mints, priceData] = await Promise.all([
         mintsRes.json(),
-        syncStateRes.json().catch(() => ({ lastSync: 0, isSyncing: false })),
         priceRes?.json().catch(() => null) || Promise.resolve(null),
       ]);
 
@@ -181,29 +180,15 @@ export default function Dashboard() {
       
       // Définir immédiatement les stats avec les prix depuis la base de données
       setStats(statsWithPrice);
-      
-      // Mettre à jour le lastSyncTime depuis le sync state partagé
-      if (syncState && syncState.lastSync && syncState.lastSync > 0) {
-        const timestamp = syncState.lastSync;
-        const now = Date.now();
-        
-        // Détecter si le timestamp est en secondes (10 chiffres) ou millisecondes (13 chiffres)
-        // Un timestamp en secondes Unix est généralement entre 1000000000 (2001) et 9999999999 (2286)
-        // Un timestamp en millisecondes est généralement > 1000000000000
-        if (timestamp < 1000000000000 && timestamp > 1000000000) {
-          // Timestamp en secondes (10 chiffres), convertir en millisecondes
-          setLastSyncTime(new Date(timestamp * 1000));
-        } else {
-          // Timestamp en millisecondes (13 chiffres), utiliser tel quel
-          setLastSyncTime(new Date(timestamp));
-        }
-      } else {
-        setLastSyncTime(null);
-      }
 
       // Charger les stats avec prix en arrière-plan (non bloquant)
       fetch('/api/stats')
-        .then(res => res.json())
+        .then(res => {
+          if (!res.ok) {
+            throw new Error(`API returned ${res.status}`);
+          }
+          return res.json();
+        })
         .then(poolStats => {
           // Fusionner les stats calculées avec les stats de l'API (prix, balances)
           setStats({
@@ -216,7 +201,12 @@ export default function Dashboard() {
         })
         .catch(err => {
           console.error('Error fetching stats (non-blocking):', err);
-          // Les stats calculées sont déjà définies, pas besoin de les redéfinir
+          // Si l'API échoue, définir tokenBurned et tokenSupply à 0 pour éviter "Loading..." indéfini
+          setStats(prevStats => ({
+            ...prevStats!,
+            tokenSupply: prevStats?.tokenSupply ?? 0,
+            tokenBurned: prevStats?.tokenBurned ?? 0,
+          }));
         });
 
       setAverageStats(calculatedAverage);
@@ -318,7 +308,7 @@ export default function Dashboard() {
     // Mettre à jour toutes les 30 secondes
     const interval = setInterval(updateCountdown, 30000);
     return () => clearInterval(interval);
-  }, [lastSyncTime]);
+  }, []); // Ne pas dépendre de lastSyncTime pour éviter les réexécutions inutiles
 
   if (loading && !stats) {
     return (
@@ -592,17 +582,19 @@ export default function Dashboard() {
               />
               <StatsCard
                 title="$LIQUID Supply Burn"
-                value={stats.tokenBurned != null && stats.tokenBurned > 0 
-                  ? stats.tokenBurned.toLocaleString('en-US', {
-                      maximumFractionDigits: 2,
-                    })
-                  : stats.tokenBurned === 0
-                    ? '0'
-                    : 'Loading...'}
-                subtitle={stats.tokenBurned != null && stats.tokenBurned > 0 && stats.tokenSupply != null
-                  ? `${stats.tokenSupply.toLocaleString('en-US', { maximumFractionDigits: 2 })} / 1,000,000,000 supply`
-                  : stats.tokenBurned === 0
-                    ? 'No burns yet'
+                value={stats.tokenBurned != null
+                  ? stats.tokenBurned > 0
+                    ? stats.tokenBurned.toLocaleString('en-US', {
+                        maximumFractionDigits: 2,
+                      })
+                    : '0'
+                  : 'Loading...'}
+                subtitle={stats.tokenBurned != null
+                  ? stats.tokenSupply != null
+                    ? `${stats.tokenSupply.toLocaleString('en-US', { maximumFractionDigits: 0 })} / 1,000,000,000 supply`
+                    : 'Calculating supply...'
+                  : stats.tokenSupply != null
+                    ? `${stats.tokenSupply.toLocaleString('en-US', { maximumFractionDigits: 0 })} / 1,000,000,000 supply`
                     : 'Calculating...'}
                 color="red"
               />
