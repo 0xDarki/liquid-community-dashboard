@@ -659,6 +659,27 @@ export default function Dashboard() {
                 color="red"
               />
             </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+              <StatsCard
+                title="Market Cap / Liquidity Ratio"
+                value={stats.tokenSupply != null && stats.tokenPriceInUsd != null && stats.solBalance != null && stats.tokenBalance != null && stats.solPrice != null
+                  ? (() => {
+                      const marketCap = stats.tokenSupply * stats.tokenPriceInUsd;
+                      const totalLiquidity = (stats.solBalance * stats.solPrice) + (stats.tokenBalance * stats.tokenPriceInUsd);
+                      const ratio = totalLiquidity > 0 ? marketCap / totalLiquidity : null;
+                      return ratio != null ? ratio.toFixed(2) : 'N/A';
+                    })()
+                  : 'Loading...'}
+                subtitle={stats.tokenSupply != null && stats.tokenPriceInUsd != null && stats.solBalance != null && stats.tokenBalance != null && stats.solPrice != null
+                  ? (() => {
+                      const marketCap = stats.tokenSupply * stats.tokenPriceInUsd;
+                      const totalLiquidity = (stats.solBalance * stats.solPrice) + (stats.tokenBalance * stats.tokenPriceInUsd);
+                      return `MC: $${marketCap.toLocaleString('en-US', { maximumFractionDigits: 0 })} / Liq: $${totalLiquidity.toLocaleString('en-US', { maximumFractionDigits: 0 })}`;
+                    })()
+                  : 'Calculating...'}
+                color="purple"
+              />
+            </div>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-2 gap-4">
             {(() => {
                 // Afficher le prix depuis Jupiter API ou calculer depuis les balances
