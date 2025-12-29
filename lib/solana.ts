@@ -1097,7 +1097,8 @@ export async function getTransferTransactions(limit: number = 50): Promise<Trans
       const buybackPublicKey = new PublicKey(BUYBACK_ADDRESS);
       // Récupérer toutes les transactions du buyback (il n'y en a que ~17 qui concernent le token)
       const buybackLimit = limit === 0 ? 1000 : Math.max(limit * 50, 1000); // Limite élevée car on va filtrer
-      await delay(MIN_REQUEST_DELAY); // Délai avant la première requête
+      const initialDelay = limit === 0 ? MIN_REQUEST_DELAY * 5 : MIN_REQUEST_DELAY; // Délai plus long pour getAll
+      await delay(initialDelay); // Délai avant la première requête
       
       // Pagination pour récupérer toutes les transactions si nécessaire
       let before: string | undefined = undefined;
@@ -1132,8 +1133,9 @@ export async function getTransferTransactions(limit: number = 50): Promise<Trans
           
           if (buybackSignatures.length < pageLimit) break; // Plus de transactions disponibles
           
-          // Délai entre les pages
-          await delay(MIN_REQUEST_DELAY);
+          // Délai entre les pages (plus long pour getAll)
+          const pageDelay = limit === 0 ? MIN_REQUEST_DELAY * 5 : MIN_REQUEST_DELAY * 2;
+          await delay(pageDelay);
           
           // Si on a déjà trouvé assez de transfers et qu'on a une limite, on peut arrêter de récupérer
           if (limit > 0 && transactions.length >= limit) {
@@ -1167,9 +1169,9 @@ export async function getTransferTransactions(limit: number = 50): Promise<Trans
           break;
         }
         
-        // Ajouter un délai entre chaque transaction (plus long pour getAll)
+        // Ajouter un délai entre chaque transaction (beaucoup plus long pour getAll)
         if (processedCount > 0) {
-          const requestDelay = limit === 0 ? MIN_REQUEST_DELAY * 2 : MIN_REQUEST_DELAY;
+          const requestDelay = limit === 0 ? MIN_REQUEST_DELAY * 10 : MIN_REQUEST_DELAY * 2; // 700ms pour getAll
           await delay(requestDelay); // Délai pour respecter la limite de 10 req/s
         }
         
@@ -1183,20 +1185,8 @@ export async function getTransferTransactions(limit: number = 50): Promise<Trans
         }
         
         try {
-          // Vérifier d'abord le statut de la transaction pour éviter les transactions échouées
-          const status = await connection.getSignatureStatus(sigInfo.signature);
-          
-          // Ne filtrer QUE si la transaction a explicitement échoué (err existe et n'est pas null)
-          // Ne pas filtrer si status.value est null/undefined (peut être normal pour certaines transactions anciennes)
-          // Une transaction réussie a status.value.confirmationStatus défini et err === null
-          // Une transaction échouée a status.value.err défini et non-null
-          if (status?.value && status.value.err !== null && status.value.err !== undefined) {
-            console.log(`[getTransferTransactions] Skipping failed transaction: ${sigInfo.signature}, err: ${JSON.stringify(status.value.err)}`);
-            processedCount++;
-            consecutiveErrors = 0;
-            continue;
-          }
-          
+          // Aller directement à getParsedTransaction (contient déjà l'info d'erreur dans meta.err)
+          // Cela économise une requête RPC par transaction
           const tx = await connection.getParsedTransaction(sigInfo.signature, {
             maxSupportedTransactionVersion: 0,
           });
