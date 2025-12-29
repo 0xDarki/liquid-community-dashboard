@@ -15,10 +15,18 @@ export async function GET() {
     // Récupérer le prix du token (depuis le stockage ou en temps réel)
     let tokenPrice = await loadStoredPrice();
     
-    // Si le prix n'est pas disponible ou est trop ancien (> 5 minutes), le rafraîchir
+    // Si le prix n'est pas disponible, est trop ancien (> 5 minutes), ou a des balances incorrectes, le rafraîchir
     const fiveMinutes = 5 * 60 * 1000;
-    if (!tokenPrice || (Date.now() - tokenPrice.timestamp) > fiveMinutes) {
-      console.log('[Stats API] Price not found or too old, fetching fresh price...');
+    const needsRefresh = !tokenPrice || 
+                        (Date.now() - tokenPrice.timestamp) > fiveMinutes ||
+                        (tokenPrice.solBalance != null && tokenPrice.solBalance < 10) ||
+                        (tokenPrice.tokenBalance != null && tokenPrice.tokenBalance < 1000);
+    
+    if (needsRefresh) {
+      console.log('[Stats API] Price not found, too old, or has invalid balances, fetching fresh price...');
+      if (tokenPrice) {
+        console.log(`[Stats API] Current stored balances: SOL=${tokenPrice.solBalance}, tokens=${tokenPrice.tokenBalance}`);
+      }
       const { getTokenPrice } = await import('@/lib/solana');
       const freshPrice = await getTokenPrice();
       if (freshPrice) {
@@ -32,7 +40,7 @@ export async function GET() {
           timestamp: Date.now(),
         };
         await saveStoredPrice(tokenPrice);
-        console.log('[Stats API] Fresh price saved');
+        console.log(`[Stats API] Fresh price saved: SOL=${freshPrice.solBalance}, tokens=${freshPrice.tokenBalance}`);
       }
     } else {
       console.log('[Stats API] Using stored price');
