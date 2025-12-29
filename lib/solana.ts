@@ -4,6 +4,7 @@ import { Connection, PublicKey, ParsedTransactionWithMeta, ParsedInstruction } f
 export const LP_POOL_ADDRESS = '5DXmqgrTivkdwg43UMU1YSV5WAvVmgvjBxsVP1aLV4Dk';
 export const TOKEN_MINT_ADDRESS = 'J2kvsjCVGmKYH5nqo9X7VJGH2jpmKkNdzAaYUfKspump';
 export const BUYBACK_ADDRESS = '1nc1nerator11111111111111111111111111111111';
+export const BURN_SOURCE_ADDRESS = 'LYANE1HpjnQWjKW6a6NJLuuyP4fsX77sUF6YUHb2ktA'; // Adresse source des burns
 
 // Transactions à exclure
 export const EXCLUDED_TRANSACTIONS = [
@@ -549,11 +550,12 @@ function parseTransferTransaction(tx: ParsedTransactionWithMeta): TransferTransa
     typeof key === 'string' ? key : key.pubkey.toString()
   );
   
-  // Vérifier si le buyback est impliqué dans la transaction OU si le token mint est impliqué
+  // Vérifier que la transaction implique le buyback, le token mint, ET l'adresse source des burns
   const hasBuyback = accountKeys.includes(BUYBACK_ADDRESS);
   const hasTokenMint = accountKeys.includes(TOKEN_MINT_ADDRESS);
+  const hasBurnSource = accountKeys.includes(BURN_SOURCE_ADDRESS);
   
-  if (!hasBuyback && !hasTokenMint) return null;
+  if (!hasBuyback || !hasTokenMint || !hasBurnSource) return null;
 
   let tokenAmount = 0;
   let from = '';
@@ -613,33 +615,40 @@ function parseTransferTransaction(tx: ParsedTransactionWithMeta): TransferTransa
 
   // Trouver l'expéditeur si on a trouvé un transfert
   if (tokenAmount > 0) {
+    // Vérifier que le transfer vient bien de BURN_SOURCE_ADDRESS
     if (!from) {
-      // Chercher qui a perdu des tokens
+      // Chercher qui a perdu des tokens (doit être BURN_SOURCE_ADDRESS)
       for (const preBalance of tx.meta.preTokenBalances || []) {
-        if (preBalance.mint === TOKEN_MINT_ADDRESS && preBalance.owner !== BUYBACK_ADDRESS) {
+        if (preBalance.mint === TOKEN_MINT_ADDRESS && preBalance.owner === BURN_SOURCE_ADDRESS) {
           const preAmount = preBalance.uiTokenAmount?.uiAmount || 0;
           const postBalance = tx.meta.postTokenBalances?.find(
-            (b: any) => b.owner === preBalance.owner && b.mint === TOKEN_MINT_ADDRESS
+            (b: any) => b.owner === BURN_SOURCE_ADDRESS && b.mint === TOKEN_MINT_ADDRESS
           );
           const postAmount = postBalance?.uiTokenAmount?.uiAmount || 0;
           if (preAmount > postAmount) {
-            from = preBalance.owner || accountKeys[0] || 'Unknown';
+            from = BURN_SOURCE_ADDRESS;
             break;
           }
         }
       }
       
-      // Si toujours pas trouvé, utiliser le premier compte
+      // Si toujours pas trouvé mais qu'on a confirmé que c'est un transfer vers le buyback,
+      // utiliser BURN_SOURCE_ADDRESS comme source par défaut
       if (!from) {
-        from = accountKeys[0] || 'Unknown';
+        from = BURN_SOURCE_ADDRESS;
       }
+    }
+    
+    // Vérifier que le from est bien BURN_SOURCE_ADDRESS
+    if (from !== BURN_SOURCE_ADDRESS) {
+      return null; // Ce n'est pas un burn depuis la bonne adresse
     }
 
     return {
       signature: tx.transaction.signatures[0],
       timestamp: tx.blockTime || Date.now() / 1000,
       tokenAmount,
-      from: from || 'Unknown',
+      from: BURN_SOURCE_ADDRESS,
       to: BUYBACK_ADDRESS,
     };
   }
@@ -1200,22 +1209,58 @@ export async function getTransferTransactions(limit: number = 50): Promise<Trans
               continue;
             }
             
-            // Filtrer rapidement : vérifier si le token $LIQUID est dans la transaction
-            // Si pas de token mint, skip immédiatement (économise le parsing)
+            // Filtrer rapidement : vérifier si c'est un transfer depuis BURN_SOURCE_ADDRESS vers BUYBACK_ADDRESS du token $LIQUID
             const accountKeys = tx.transaction.message.accountKeys.map((key: any) => 
               typeof key === 'string' ? key : key.pubkey.toString()
             );
-            const hasTokenMint = accountKeys.includes(TOKEN_MINT_ADDRESS);
             
-            // Vérifier aussi dans les token balances
+            // Vérifier que la transaction implique le token $LIQUID
+            const hasTokenMint = accountKeys.includes(TOKEN_MINT_ADDRESS);
             const hasTokenInBalances = tx.meta?.postTokenBalances?.some(
               (b: any) => b.mint === TOKEN_MINT_ADDRESS
             ) || tx.meta?.preTokenBalances?.some(
               (b: any) => b.mint === TOKEN_MINT_ADDRESS
             );
             
-            // Si pas de token $LIQUID dans la transaction, skip immédiatement
-            if (!hasTokenMint && !hasTokenInBalances) {
+            // Vérifier que la transaction implique le buyback address
+            const hasBuyback = accountKeys.includes(BUYBACK_ADDRESS);
+            const hasBuybackInBalances = tx.meta?.postTokenBalances?.some(
+              (b: any) => b.owner === BUYBACK_ADDRESS && b.mint === TOKEN_MINT_ADDRESS
+            );
+            
+            // Vérifier que la transaction implique l'adresse source des burns
+            const hasBurnSource = accountKeys.includes(BURN_SOURCE_ADDRESS);
+            const hasBurnSourceInBalances = tx.meta?.preTokenBalances?.some(
+              (b: any) => b.owner === BURN_SOURCE_ADDRESS && b.mint === TOKEN_MINT_ADDRESS
+            );
+            
+            // Si pas de token $LIQUID, buyback, ou source de burn dans la transaction, skip immédiatement
+            if ((!hasTokenMint && !hasTokenInBalances) || !hasBuyback || !hasBurnSource) {
+              processedCount++;
+              consecutiveErrors = 0;
+              continue;
+            }
+            
+            // Vérifier que c'est bien un transfer depuis la source vers le buyback
+            // En regardant les changements de balances
+            const sourcePreBalance = tx.meta?.preTokenBalances?.find(
+              (b: any) => b.owner === BURN_SOURCE_ADDRESS && b.mint === TOKEN_MINT_ADDRESS
+            );
+            const sourcePostBalance = tx.meta?.postTokenBalances?.find(
+              (b: any) => b.owner === BURN_SOURCE_ADDRESS && b.mint === TOKEN_MINT_ADDRESS
+            );
+            const buybackPreBalance = tx.meta?.preTokenBalances?.find(
+              (b: any) => b.owner === BUYBACK_ADDRESS && b.mint === TOKEN_MINT_ADDRESS
+            );
+            const buybackPostBalance = tx.meta?.postTokenBalances?.find(
+              (b: any) => b.owner === BUYBACK_ADDRESS && b.mint === TOKEN_MINT_ADDRESS
+            );
+            
+            const sourceDecrease = (sourcePreBalance?.uiTokenAmount?.uiAmount || 0) - (sourcePostBalance?.uiTokenAmount?.uiAmount || 0);
+            const buybackIncrease = (buybackPostBalance?.uiTokenAmount?.uiAmount || 0) - (buybackPreBalance?.uiTokenAmount?.uiAmount || 0);
+            
+            // Si pas de transfer visible (source perd des tokens ET buyback gagne des tokens), skip
+            if (sourceDecrease <= 0 || buybackIncrease <= 0) {
               processedCount++;
               consecutiveErrors = 0;
               continue;
