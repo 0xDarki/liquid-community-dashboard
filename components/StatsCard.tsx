@@ -5,7 +5,7 @@ interface StatsCardProps {
   value: string | number;
   subtitle?: string;
   icon?: React.ReactNode;
-  color?: 'blue' | 'green' | 'purple' | 'orange' | 'indigo' | 'pink';
+  color?: 'blue' | 'green' | 'purple' | 'orange' | 'indigo' | 'pink' | 'red';
 }
 
 export default function StatsCard({ title, value, subtitle, icon, color = 'blue' }: StatsCardProps) {
@@ -57,6 +57,14 @@ export default function StatsCard({ title, value, subtitle, icon, color = 'blue'
       value: 'text-pink-900 dark:text-pink-100',
       subtitle: 'text-pink-600 dark:text-pink-400',
       dot: 'bg-pink-500',
+    },
+    red: {
+      bg: 'bg-gradient-to-br from-red-50 to-red-100 dark:from-red-900/20 dark:to-red-800/20',
+      border: 'border-red-200 dark:border-red-800/30',
+      title: 'text-red-700 dark:text-red-300',
+      value: 'text-red-900 dark:text-red-100',
+      subtitle: 'text-red-600 dark:text-red-400',
+      dot: 'bg-red-500',
     },
   };
 

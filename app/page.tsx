@@ -589,6 +589,22 @@ export default function Dashboard() {
                 color="green"
               />
             </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+              <StatsCard
+                title="$LIQUID Supply Burn"
+                value={stats.totalTokensTransferred != null && stats.totalTokensTransferred > 0 
+                  ? stats.totalTokensTransferred.toLocaleString('en-US', {
+                      maximumFractionDigits: 2,
+                    })
+                  : '0'}
+                subtitle={stats.totalTokensTransferred != null && stats.totalTokensTransferred > 0 && stats.totalTokensAdded > 0
+                  ? `${((stats.totalTokensTransferred / stats.totalTokensAdded) * 100).toFixed(2)}% of total added`
+                  : stats.totalTokensTransferred != null && stats.totalTokensTransferred === 0
+                    ? 'No burns yet'
+                    : 'Calculating...'}
+                color="red"
+              />
+            </div>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-2 gap-4">
             {(() => {
                 // Afficher le prix depuis Jupiter API ou calculer depuis les balances
@@ -624,9 +640,15 @@ export default function Dashboard() {
                       maximumFractionDigits: 2,
                     })}`
                   : 'Loading...'}
-                subtitle={stats.totalLiquidity != null && stats.totalLiquidity > 0
-                  ? `${stats.totalSolAdded.toFixed(4)} SOL × $${stats.solPrice?.toFixed(2) || '0'} + ${stats.totalTokensAdded.toLocaleString('en-US', { maximumFractionDigits: 2 })} $LIQUID × $${stats.tokenPriceInUsd?.toFixed(8) || '0'}`
-                  : 'Calculating liquidity...'}
+                subtitle={stats.totalLiquidity != null && stats.totalLiquidity > 0 && stats.solPrice != null && stats.tokenPriceInUsd != null
+                  ? (() => {
+                      const solValue = stats.totalSolAdded * stats.solPrice;
+                      const tokenValue = stats.totalTokensAdded * stats.tokenPriceInUsd;
+                      return `${stats.totalSolAdded.toFixed(4)} SOL × $${stats.solPrice.toFixed(2)} + ${stats.totalTokensAdded.toLocaleString('en-US', { maximumFractionDigits: 1 })} $LIQUID × $${stats.tokenPriceInUsd.toFixed(8)}`;
+                    })()
+                  : stats.totalLiquidity != null && stats.totalLiquidity > 0
+                    ? `${stats.totalSolAdded.toFixed(4)} SOL × $${stats.solPrice?.toFixed(2) || '0'} + ${stats.totalTokensAdded.toLocaleString('en-US', { maximumFractionDigits: 2 })} $LIQUID × $${stats.tokenPriceInUsd?.toFixed(8) || '0'}`
+                    : 'Calculating liquidity...'}
                 color="orange"
               />
             </div>
