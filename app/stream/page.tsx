@@ -128,13 +128,28 @@ export default function StreamPage() {
             <div className="relative">
               <div className="text-gray-400 text-sm font-medium mb-3 uppercase tracking-wide">Total Liquidity</div>
               <div className="text-3xl font-bold text-green-400 mb-2">
-                {stats?.totalLiquidity
-                  ? `$${formatValue(stats.totalLiquidity, 0)}`
-                  : 'N/A'}
+                {stats?.solBalance != null && stats?.solPrice != null
+                  ? (() => {
+                      const solLiquidity = stats.solBalance * stats.solPrice;
+                      const tokenBalance = stats.tokenPriceToken ?? stats.tokenBalance ?? 0;
+                      const tokenLiquidity = tokenBalance * (stats.tokenPriceInUsd ?? 0);
+                      
+                      // Si tokenBalance est 0 ou si la liquidité en tokens est < 10% de la liquidité SOL, multiplier par 2
+                      let totalLiquidity: number;
+                      if (tokenBalance <= 0 || tokenLiquidity < solLiquidity * 0.1) {
+                        totalLiquidity = solLiquidity * 2;
+                      } else {
+                        totalLiquidity = solLiquidity + tokenLiquidity;
+                      }
+                      return `$${formatValue(totalLiquidity, 0)}`;
+                    })()
+                  : stats?.totalLiquidity
+                    ? `$${formatValue(stats.totalLiquidity, 0)}`
+                    : 'N/A'}
               </div>
               <div className="text-base text-gray-400 font-medium">
-                {stats?.totalSolAdded ? `${formatValue(stats.totalSolAdded, 2)} SOL` : ''} +{' '}
-                {stats?.totalTokensAdded ? formatValue(stats.totalTokensAdded, 0) : '0'} tokens
+                {stats?.solBalance ? `${formatValue(stats.solBalance, 2)} SOL` : stats?.totalSolAdded ? `${formatValue(stats.totalSolAdded, 2)} SOL` : ''} +{' '}
+                {stats?.tokenPriceToken ?? stats?.tokenBalance ?? stats?.totalTokensAdded ? formatValue(stats.tokenPriceToken ?? stats.tokenBalance ?? stats.totalTokensAdded ?? 0, 0) : '0'} tokens
               </div>
             </div>
           </div>
@@ -145,13 +160,41 @@ export default function StreamPage() {
             <div className="relative">
               <div className="text-gray-400 text-sm font-medium mb-3 uppercase tracking-wide">MC / Liquidity</div>
               <div className="text-3xl font-bold text-yellow-400 mb-2">
-                {stats?.tokenSupply && stats?.tokenPriceInUsd && stats?.totalLiquidity && stats.totalLiquidity > 0
-                  ? formatValue((stats.tokenSupply * stats.tokenPriceInUsd) / stats.totalLiquidity, 2)
+                {stats?.tokenSupply != null && stats?.tokenPriceInUsd != null && stats?.solBalance != null && stats?.solPrice != null
+                  ? (() => {
+                      const marketCap = stats.tokenSupply * stats.tokenPriceInUsd;
+                      const solLiquidity = stats.solBalance * stats.solPrice;
+                      // Utiliser tokenPriceToken si disponible (plus fiable), sinon stats.tokenBalance
+                      const tokenBalance = stats.tokenPriceToken ?? stats.tokenBalance ?? 0;
+                      const tokenLiquidity = tokenBalance * stats.tokenPriceInUsd;
+                      
+                      // Si tokenBalance est 0 ou si la liquidité en tokens est < 10% de la liquidité SOL, multiplier par 2
+                      let totalLiquidity: number;
+                      if (tokenBalance <= 0 || tokenLiquidity < solLiquidity * 0.1) {
+                        totalLiquidity = solLiquidity * 2;
+                      } else {
+                        totalLiquidity = solLiquidity + tokenLiquidity;
+                      }
+                      const ratio = totalLiquidity > 0 ? marketCap / totalLiquidity : null;
+                      return ratio != null ? formatValue(ratio, 2) : 'N/A';
+                    })()
                   : 'N/A'}
               </div>
               <div className="text-base text-gray-400 font-medium">
-                {stats?.tokenSupply && stats?.tokenPriceInUsd && stats?.totalLiquidity
-                  ? `MC: $${formatValue(stats.tokenSupply * stats.tokenPriceInUsd, 0)}`
+                {stats?.tokenSupply != null && stats?.tokenPriceInUsd != null && stats?.solBalance != null && stats?.solPrice != null
+                  ? (() => {
+                      const marketCap = stats.tokenSupply * stats.tokenPriceInUsd;
+                      const solLiquidity = stats.solBalance * stats.solPrice;
+                      const tokenBalance = stats.tokenPriceToken ?? stats.tokenBalance ?? 0;
+                      const tokenLiquidity = tokenBalance * stats.tokenPriceInUsd;
+                      let totalLiquidity: number;
+                      if (tokenBalance <= 0 || tokenLiquidity < solLiquidity * 0.1) {
+                        totalLiquidity = solLiquidity * 2;
+                      } else {
+                        totalLiquidity = solLiquidity + tokenLiquidity;
+                      }
+                      return `MC: $${formatValue(marketCap, 0)} / Liq: $${formatValue(totalLiquidity, 0)}`;
+                    })()
                   : ''}
               </div>
             </div>
