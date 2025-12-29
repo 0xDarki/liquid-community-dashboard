@@ -567,7 +567,7 @@ export default function Dashboard() {
           </div>
         ) : stats && (
           <div className="mb-6">
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
               <StatsCard
                 title="Liquidity Additions"
                 value={stats.totalMints.toLocaleString('en-US')}
@@ -588,8 +588,6 @@ export default function Dashboard() {
                 subtitle="Since the beginning"
                 color="green"
               />
-            </div>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
               <StatsCard
                 title="$LIQUID Supply Burn"
                 value={stats.totalTokensTransferred != null && stats.totalTokensTransferred > 0 
@@ -634,12 +632,34 @@ export default function Dashboard() {
               })()}
               <StatsCard
                 title="Total Liquidity"
-                value={stats.totalLiquidity != null && stats.totalLiquidity > 0
-                  ? `$${stats.totalLiquidity.toLocaleString('en-US', {
-                      minimumFractionDigits: 2,
-                      maximumFractionDigits: 2,
-                    })}`
-                  : 'Loading...'}
+                value={stats.totalLiquidity != null && stats.totalLiquidity > 0 && stats.solPrice != null && stats.tokenPriceInUsd != null
+                  ? (() => {
+                      const solValue = stats.totalSolAdded * stats.solPrice;
+                      const tokenValue = stats.totalTokensAdded * stats.tokenPriceInUsd;
+                      
+                      // Formater les valeurs en k si nécessaire
+                      const formatValue = (val: number): string => {
+                        if (val >= 1000000) {
+                          return `${(val / 1000000).toFixed(1)}M$`;
+                        } else if (val >= 1000) {
+                          return `${(val / 1000).toFixed(1)}k$`;
+                        } else {
+                          return `$${val.toFixed(2)}`;
+                        }
+                      };
+                      
+                      const formattedSolValue = formatValue(solValue);
+                      const formattedTokenValue = formatValue(tokenValue);
+                      const formattedTotal = formatValue(stats.totalLiquidity);
+                      
+                      return `${formattedSolValue} SOL + ${formattedTokenValue} $LIQUID = ${formattedTotal}`;
+                    })()
+                  : stats.totalLiquidity != null && stats.totalLiquidity > 0
+                    ? `$${stats.totalLiquidity.toLocaleString('en-US', {
+                        minimumFractionDigits: 2,
+                        maximumFractionDigits: 2,
+                      })}`
+                    : 'Loading...'}
                 subtitle={stats.totalLiquidity != null && stats.totalLiquidity > 0 && stats.solPrice != null && stats.tokenPriceInUsd != null
                   ? (() => {
                       const solValue = stats.totalSolAdded * stats.solPrice;
