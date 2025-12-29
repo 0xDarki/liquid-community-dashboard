@@ -1100,53 +1100,59 @@ export async function getTransferTransactions(limit: number = 50): Promise<Trans
   let buybackSkippedCount = 0;
   
   try {
-    // Chercher les transactions depuis l'adresse source des burns (LYANE1HpjnQWjKW6a6NJLuuyP4fsX77sUF6YUHb2ktA)
-    // C'est encore plus efficace car il n'y a que ~17 transactions de burn depuis cette adresse
+    // Recherche ciblée : chercher depuis le token mint et filtrer strictement pour ne garder
+    // QUE les transactions qui impliquent à la fois BURN_SOURCE_ADDRESS et BUYBACK_ADDRESS
+    // C'est la méthode la plus efficace car on filtre dès la récupération des signatures
     try {
-      const burnSourcePublicKey = new PublicKey(BURN_SOURCE_ADDRESS);
-      // Récupérer toutes les transactions de l'adresse source (il n'y en a que ~17 qui sont des burns)
-      const sourceLimit = limit === 0 ? 100 : Math.max(limit * 10, 100); // Limite réduite car on filtre précisément
-      const initialDelay = limit === 0 ? MIN_REQUEST_DELAY * 10 : MIN_REQUEST_DELAY * 2; // Délai très long pour getAll
-      await delay(initialDelay); // Délai avant la première requête
+      const tokenMintPublicKey = new PublicKey(TOKEN_MINT_ADDRESS);
+      // Limite très réduite car on filtre précisément : seulement les transfers depuis BURN_SOURCE_ADDRESS vers BUYBACK_ADDRESS
+      // Il n'y a que ~17 transactions de burn, donc on peut limiter drastiquement
+      const tokenLimit = limit === 0 ? 100 : Math.max(limit * 15, 100); // Limite très réduite
+      const initialDelay = limit === 0 ? MIN_REQUEST_DELAY * 10 : MIN_REQUEST_DELAY * 2;
+      await delay(initialDelay);
       
-      // Pagination pour récupérer toutes les transactions si nécessaire
+      // Pagination pour récupérer les transactions si nécessaire
       let before: string | undefined = undefined;
       let pageCount = 0;
-      const maxPages = limit === 0 ? 5 : Math.ceil(sourceLimit / 1000); // Maximum 5 pages pour getAll
+      const maxPages = limit === 0 ? 2 : Math.ceil(tokenLimit / 1000); // Maximum 2 pages pour getAll
       let consecutive429Errors = 0;
-      const max429Errors = 3; // Arrêter après 3 erreurs 429 consécutives
+      const max429Errors = 3;
+      let foundBurnCount = 0; // Compter les burns trouvés pour arrêter tôt
       
-      while (pageCount < maxPages && allSignatures.length < sourceLimit) {
-        // Si trop d'erreurs 429, augmenter drastiquement le délai
+      while (pageCount < maxPages && allSignatures.length < tokenLimit) {
         if (consecutive429Errors > 0) {
-          const backoffDelay = Math.min(consecutive429Errors * 10000, 60000); // Max 60 secondes
+          const backoffDelay = Math.min(consecutive429Errors * 10000, 60000);
           console.log(`[getTransferTransactions] Backing off after 429 errors, waiting ${backoffDelay}ms...`);
           await delay(backoffDelay);
         }
         
-        const pageLimit = Math.min(1000, sourceLimit - allSignatures.length);
+        const pageLimit = Math.min(1000, tokenLimit - allSignatures.length);
         
         try {
-          const sourceSignatures = await connection.getSignaturesForAddress(burnSourcePublicKey, { 
+          const tokenSignatures = await connection.getSignaturesForAddress(tokenMintPublicKey, { 
             limit: pageLimit,
             before: before 
           });
           
-          consecutive429Errors = 0; // Réinitialiser le compteur en cas de succès
+          consecutive429Errors = 0;
           
-          if (sourceSignatures.length === 0) break;
+          if (tokenSignatures.length === 0) break;
           
-          allSignatures = allSignatures.concat(sourceSignatures);
-          before = sourceSignatures[sourceSignatures.length - 1].signature;
+          allSignatures = allSignatures.concat(tokenSignatures);
+          before = tokenSignatures[tokenSignatures.length - 1].signature;
           pageCount++;
           
-          if (sourceSignatures.length < pageLimit) break; // Plus de transactions disponibles
+          if (tokenSignatures.length < pageLimit) break;
           
-          // Délai entre les pages (très long pour getAll)
           const pageDelay = limit === 0 ? MIN_REQUEST_DELAY * 10 : MIN_REQUEST_DELAY * 3;
           await delay(pageDelay);
           
-          // Si on a déjà trouvé assez de transfers et qu'on a une limite, on peut arrêter de récupérer
+          // Si on a trouvé assez de burns (il n'y en a que ~17), on peut arrêter
+          if (limit === 0 && foundBurnCount >= 20) {
+            console.log(`[getTransferTransactions] Found ${foundBurnCount} burns, stopping early (expected ~17)`);
+            break;
+          }
+          
           if (limit > 0 && transactions.length >= limit) {
             break;
           }
@@ -1158,14 +1164,13 @@ export async function getTransferTransactions(limit: number = 50): Promise<Trans
               console.warn(`[getTransferTransactions] Too many 429 errors (${consecutive429Errors}), stopping and returning what we have`);
               break;
             }
-            // Le retry sera géré par le backoff au début de la boucle
             continue;
           }
-          throw error; // Re-throw les autres erreurs
+          throw error;
         }
       }
       
-      console.log(`[getTransferTransactions] Found ${allSignatures.length} transactions from burn source, filtering for transfers to buyback of $LIQUID token (target: ${limit === 0 ? 'all' : limit})...`);
+      console.log(`[getTransferTransactions] Found ${allSignatures.length} token transactions, filtering for transfers from ${BURN_SOURCE_ADDRESS.substring(0, 8)}... to ${BUYBACK_ADDRESS.substring(0, 8)}... of $LIQUID token (target: ${limit === 0 ? 'all' : limit})...`);
       
       for (const sigInfo of allSignatures) {
         if (EXCLUDED_TRANSACTIONS.includes(sigInfo.signature) || seenSignatures.has(sigInfo.signature)) {
@@ -1209,33 +1214,32 @@ export async function getTransferTransactions(limit: number = 50): Promise<Trans
               continue;
             }
             
-            // Filtrer rapidement : vérifier si c'est un transfer depuis BURN_SOURCE_ADDRESS vers BUYBACK_ADDRESS du token $LIQUID
+            // Filtrer très rapidement : vérifier si c'est un transfer depuis BURN_SOURCE_ADDRESS vers BUYBACK_ADDRESS du token $LIQUID
+            // On vérifie d'abord que les DEUX adresses sont présentes (filtre le plus restrictif) pour skip rapide
             const accountKeys = tx.transaction.message.accountKeys.map((key: any) => 
               typeof key === 'string' ? key : key.pubkey.toString()
             );
             
-            // Vérifier que la transaction implique le token $LIQUID
-            const hasTokenMint = accountKeys.includes(TOKEN_MINT_ADDRESS);
+            // Vérifier EN PREMIER que la transaction implique À LA FOIS la source ET le buyback (skip rapide si l'un manque)
+            const hasBurnSource = accountKeys.includes(BURN_SOURCE_ADDRESS);
+            const hasBuyback = accountKeys.includes(BUYBACK_ADDRESS);
+            
+            if (!hasBurnSource || !hasBuyback) {
+              processedCount++;
+              consecutiveErrors = 0;
+              continue; // Skip immédiatement si pas les deux adresses (filtre le plus restrictif)
+            }
+            
+            // Le token mint est déjà vérifié car on cherche depuis TOKEN_MINT_ADDRESS
+            // Mais on vérifie quand même dans les balances pour être sûr
             const hasTokenInBalances = tx.meta?.postTokenBalances?.some(
               (b: any) => b.mint === TOKEN_MINT_ADDRESS
             ) || tx.meta?.preTokenBalances?.some(
               (b: any) => b.mint === TOKEN_MINT_ADDRESS
             );
             
-            // Vérifier que la transaction implique le buyback address
-            const hasBuyback = accountKeys.includes(BUYBACK_ADDRESS);
-            const hasBuybackInBalances = tx.meta?.postTokenBalances?.some(
-              (b: any) => b.owner === BUYBACK_ADDRESS && b.mint === TOKEN_MINT_ADDRESS
-            );
-            
-            // Vérifier que la transaction implique l'adresse source des burns
-            const hasBurnSource = accountKeys.includes(BURN_SOURCE_ADDRESS);
-            const hasBurnSourceInBalances = tx.meta?.preTokenBalances?.some(
-              (b: any) => b.owner === BURN_SOURCE_ADDRESS && b.mint === TOKEN_MINT_ADDRESS
-            );
-            
-            // Si pas de token $LIQUID, buyback, ou source de burn dans la transaction, skip immédiatement
-            if ((!hasTokenMint && !hasTokenInBalances) || !hasBuyback || !hasBurnSource) {
+            // Si pas de token $LIQUID dans les balances (normalement toujours présent), skip
+            if (!hasTokenInBalances) {
               processedCount++;
               consecutiveErrors = 0;
               continue;
@@ -1273,10 +1277,17 @@ export async function getTransferTransactions(limit: number = 50): Promise<Trans
             if (transferTx && transferTx.tokenAmount > 0 && !EXCLUDED_TRANSACTIONS.includes(transferTx.signature)) {
               transactions.push(transferTx);
               seenSignatures.add(transferTx.signature);
+              foundBurnCount++; // Incrémenter le compteur de burns trouvés
               
               // Arrêter si on a atteint la limite (sauf si limit=0 pour récupérer tout)
               if (limit > 0 && transactions.length >= limit) {
                 console.log(`[getTransferTransactions] Reached limit of ${limit} transfers, stopping`);
+                break;
+              }
+              
+              // En mode getAll, arrêter si on a trouvé ~20 burns (il n'y en a que ~17)
+              if (limit === 0 && foundBurnCount >= 20) {
+                console.log(`[getTransferTransactions] Found ${foundBurnCount} burns, stopping early (expected ~17)`);
                 break;
               }
             } else {
