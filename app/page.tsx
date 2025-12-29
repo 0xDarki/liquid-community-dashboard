@@ -635,7 +635,7 @@ export default function Dashboard() {
                 color="blue"
               />
               <StatsCard
-                title="Total Tokens Added"
+                title={`Total $LIQUID Added${stats.tokenSupply != null && stats.tokenBurned != null && (stats.tokenSupply - stats.tokenBurned) > 0 ? ` (${((stats.totalTokensAdded / (stats.tokenSupply - stats.tokenBurned)) * 100).toFixed(2)}%)` : ''}`}
                 value={stats.totalTokensAdded.toLocaleString('en-US', {
                   maximumFractionDigits: 2,
                 })}
@@ -643,7 +643,7 @@ export default function Dashboard() {
                 color="green"
               />
               <StatsCard
-                title="$LIQUID Supply Burn"
+                title={`$LIQUID Supply Burn${stats.tokenBurned != null ? ` (${((stats.tokenBurned / 1000000000) * 100).toFixed(2)}%)` : ''}`}
                 value={stats.tokenBurned != null
                   ? stats.tokenBurned > 0
                     ? stats.tokenBurned.toLocaleString('en-US', {
