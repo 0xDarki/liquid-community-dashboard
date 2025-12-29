@@ -1,7 +1,8 @@
 import { Connection, PublicKey, ParsedTransactionWithMeta, ParsedInstruction } from '@solana/web3.js';
 
 // Adresses importantes
-export const LP_POOL_ADDRESS = '5DXmqgrTivkdwg43UMU1YSV5WAvVmgvjBxsVP1aLV4Dk';
+export const LP_POOL_ADDRESS = '5DXmqgrTivkdwg43UMU1YSV5WAvVmgvjBxsVP1aLV4Dk'; // Adresse qui génère les tokens LP
+export const CURRENT_LIQUIDITY_POOL_ADDRESS = 'GTPAJHzbVA3u9qTPzECVeDYctEx4ovP4TLQ6cHPjR2mk'; // Adresse actuelle de la pool de liquidité
 export const TOKEN_MINT_ADDRESS = 'J2kvsjCVGmKYH5nqo9X7VJGH2jpmKkNdzAaYUfKspump';
 export const BUYBACK_ADDRESS = '1nc1nerator11111111111111111111111111111111';
 export const BURN_SOURCE_ADDRESS = 'LYANE1HpjnQWjKW6a6NJLuuyP4fsX77sUF6YUHb2ktA'; // Adresse source des burns
@@ -1448,7 +1449,7 @@ export async function getPoolStats(): Promise<PoolStats> {
 // Fonction pour récupérer le prix du token depuis Jupiter API
 export async function getTokenPrice(): Promise<{ price: number; priceInUsd: number; solPrice: number; solBalance: number; tokenBalance: number } | null> {
   try {
-    const publicKey = new PublicKey(LP_POOL_ADDRESS);
+    const publicKey = new PublicKey(CURRENT_LIQUIDITY_POOL_ADDRESS);
     
     // Récupérer le solde SOL de la LP
     const solBalance = await connection.getBalance(publicKey);
@@ -1457,7 +1458,7 @@ export async function getTokenPrice(): Promise<{ price: number; priceInUsd: numb
     // Récupérer le solde de tokens de la LP
     let tokenBalance = 0;
     try {
-      tokenBalance = await getTokenBalance(LP_POOL_ADDRESS, TOKEN_MINT_ADDRESS);
+      tokenBalance = await getTokenBalance(CURRENT_LIQUIDITY_POOL_ADDRESS, TOKEN_MINT_ADDRESS);
       console.log(`[getTokenPrice] Token balance from getTokenBalance: ${tokenBalance}`);
     } catch (error) {
       console.error('[getTokenPrice] Error getting token balance:', error);
@@ -1476,7 +1477,7 @@ export async function getTokenPrice(): Promise<{ price: number; priceInUsd: numb
             if (tx?.meta?.postTokenBalances) {
               let totalBalance = 0;
               for (const balance of tx.meta.postTokenBalances) {
-                if (balance.owner === LP_POOL_ADDRESS && balance.mint === TOKEN_MINT_ADDRESS) {
+                if (balance.owner === CURRENT_LIQUIDITY_POOL_ADDRESS && balance.mint === TOKEN_MINT_ADDRESS) {
                   totalBalance += balance.uiTokenAmount?.uiAmount || 0;
                 }
               }

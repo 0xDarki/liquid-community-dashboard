@@ -68,10 +68,10 @@ export async function GET() {
     const totalTokensAdded = storedMints.reduce((sum, tx) => sum + tx.tokenAmount, 0);
     
     // Récupérer les balances actuelles et la supply du token (pour l'affichage, même si on ne l'utilise plus pour le calcul du burn)
-    const { getSolBalance, getTokenBalance, getTokenSupply, LP_POOL_ADDRESS, TOKEN_MINT_ADDRESS } = await import('@/lib/solana');
+    const { getSolBalance, getTokenBalance, getTokenSupply, CURRENT_LIQUIDITY_POOL_ADDRESS, TOKEN_MINT_ADDRESS } = await import('@/lib/solana');
     const [solBalance, tokenBalance, tokenSupply] = await Promise.all([
-      getSolBalance(LP_POOL_ADDRESS),
-      getTokenBalance(LP_POOL_ADDRESS, TOKEN_MINT_ADDRESS),
+      getSolBalance(CURRENT_LIQUIDITY_POOL_ADDRESS),
+      getTokenBalance(CURRENT_LIQUIDITY_POOL_ADDRESS, TOKEN_MINT_ADDRESS),
       getTokenSupply(TOKEN_MINT_ADDRESS).catch(() => null), // Récupérer la supply pour l'affichage, ignorer les erreurs
     ]);
     
