@@ -1180,7 +1180,7 @@ export async function getTransferTransactions(limit: number = 50): Promise<Trans
         
         // Ajouter un délai entre chaque transaction (beaucoup plus long pour getAll)
         if (processedCount > 0) {
-          const requestDelay = limit === 0 ? MIN_REQUEST_DELAY * 10 : MIN_REQUEST_DELAY * 2; // 700ms pour getAll
+          const requestDelay = limit === 0 ? MIN_REQUEST_DELAY * 20 : MIN_REQUEST_DELAY * 3; // 1400ms pour getAll
           await delay(requestDelay); // Délai pour respecter la limite de 10 req/s
         }
         
