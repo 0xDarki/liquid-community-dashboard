@@ -1464,11 +1464,27 @@ export async function getPoolStats(): Promise<PoolStats> {
 export async function getTokenPrice(): Promise<{ price: number; priceInUsd: number; solPrice: number; solBalance: number; tokenBalance: number } | null> {
   try {
     const publicKey = new PublicKey(CURRENT_LIQUIDITY_POOL_ADDRESS);
+    const WSOL_MINT = 'So11111111111111111111111111111111111111112'; // Wrapped SOL mint address
     
-    // Récupérer le solde SOL de la LP
-    let solBalance = await connection.getBalance(publicKey);
-    let solBalanceInSol = solBalance / 1e9; // Convertir lamports en SOL
-    console.log(`[getTokenPrice] SOL balance from getBalance for ${CURRENT_LIQUIDITY_POOL_ADDRESS}: ${solBalanceInSol} SOL`);
+    // Récupérer le solde WSOL de la LP (dans les pools Raydium, c'est WSOL, pas SOL natif)
+    let solBalanceInSol = 0;
+    try {
+      solBalanceInSol = await getTokenBalance(CURRENT_LIQUIDITY_POOL_ADDRESS, WSOL_MINT);
+      console.log(`[getTokenPrice] WSOL balance from getTokenBalance for ${CURRENT_LIQUIDITY_POOL_ADDRESS}: ${solBalanceInSol} WSOL`);
+    } catch (error) {
+      console.error('[getTokenPrice] Error getting WSOL balance:', error);
+    }
+    
+    // Fallback: essayer le solde SOL natif si WSOL n'est pas trouvé
+    if (solBalanceInSol === 0 || solBalanceInSol < 0.1) {
+      try {
+        const solBalance = await connection.getBalance(publicKey);
+        solBalanceInSol = solBalance / 1e9; // Convertir lamports en SOL
+        console.log(`[getTokenPrice] SOL balance from getBalance (fallback) for ${CURRENT_LIQUIDITY_POOL_ADDRESS}: ${solBalanceInSol} SOL`);
+      } catch (error) {
+        console.error('[getTokenPrice] Error getting SOL balance:', error);
+      }
+    }
     
     // Si solBalance est très faible (< 10 SOL), essayer de le récupérer depuis DexScreener d'abord (plus fiable)
     if (solBalanceInSol < 10) {
